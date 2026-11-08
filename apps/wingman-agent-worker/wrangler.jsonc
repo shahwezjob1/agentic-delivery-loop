@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentic-delivery-loop-wingman-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "ai": { "binding": "AI" },
+  "services": [{ "binding": "DOMAIN_API", "service": "agentic-delivery-loop-domain-api" }],
+  "durable_objects": {
+    "bindings": [{ "name": "WINGMAN_AGENT", "class_name": "WingmanAgent" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WingmanAgent"] }],
+}

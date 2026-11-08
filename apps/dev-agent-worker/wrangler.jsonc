@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentic-delivery-loop-dev-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "upload_source_maps": true,
+  "ai": { "binding": "AI" },
+  "vars": {
+    "GITHUB_OWNER": "shahwezjob1",
+    "GITHUB_REPOSITORY": "agentic-delivery-loop",
+    "GITHUB_BASE_BRANCH": "main",
+    "GITHUB_ALLOWED_ROOT": "apps/wingman-agent-worker/src/tools/",
+    "GITHUB_MAX_FILE_BYTES": "102400",
+  },
+  "services": [{ "binding": "DOMAIN_API", "service": "agentic-delivery-loop-domain-api" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "DEV_AGENT", "class_name": "DevAgent" },
+      {
+        "name": "WINGMAN_AGENT",
+        "class_name": "WingmanAgent",
+        "script_name": "agentic-delivery-loop-wingman-agent",
+      },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DevAgent"] }],
+  "observability": { "enabled": true, "head_sampling_rate": 1, "traces": { "enabled": true } },
+}

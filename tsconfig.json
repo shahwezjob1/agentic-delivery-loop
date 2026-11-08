@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./apps/domain-api-worker"
+    },
+    {
+      "path": "./apps/wingman-agent-worker"
+    },
+    {
+      "path": "./apps/po-workflow-worker"
+    },
+    {
+      "path": "./apps/dev-agent-worker"
+    },
+    {
+      "path": "./apps/ui-worker"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@agentic-delivery-loop/tsconfig",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "*.json"
+  ],
+  "exports": {
+    "./base": "./base.json",
+    "./worker": "./worker.json",
+    "./react": "./react.json"
+  }
+}

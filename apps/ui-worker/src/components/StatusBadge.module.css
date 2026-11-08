@@ -1,0 +1,17 @@
+.badge {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--surface2);
+  text-transform: capitalize;
+  font-size: 13px;
+}
+.done {
+  color: var(--success);
+}
+.in_progress {
+  color: var(--brand);
+}
+.pending {
+  color: #8a4b00;
+}

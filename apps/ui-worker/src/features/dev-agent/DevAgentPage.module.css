@@ -1,0 +1,10 @@
+.page > header {
+  display: flex;
+  justify-content: space-between;
+}
+.page > header button {
+  height: max-content;
+}
+.page aside {
+  margin-bottom: 20px;
+}

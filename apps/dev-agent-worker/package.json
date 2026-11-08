@@ -1,0 +1,25 @@
+{
+  "name": "@agentic-delivery-loop/dev-agent-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cf:types": "wrangler types -c wrangler.jsonc -c ../domain-api-worker/wrangler.jsonc -c ../wingman-agent-worker/wrangler.jsonc",
+    "deploy": "wrangler deploy",
+    "secret:github": "wrangler secret put GITHUB_TOKEN"
+  },
+  "dependencies": {
+    "@agentic-delivery-loop/contracts": "workspace:*",
+    "@ai-sdk/provider": "^4.0.35",
+    "@cloudflare/ai-chat": "0.8.5",
+    "agents": "0.33.0",
+    "ai": "^7.0.162",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "wrangler": "4.158.0"
+  }
+}

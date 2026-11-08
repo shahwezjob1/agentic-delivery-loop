@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agentic-delivery-loop-po-workflow",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-08",
+  "workers_dev": false,
+  "upload_source_maps": true,
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "ai": { "binding": "AI" },
+  "vectorize": [{ "binding": "TICKET_INDEX", "index_name": "adl-vector-db" }],
+  "services": [{ "binding": "DOMAIN_API", "service": "agentic-delivery-loop-domain-api" }],
+  "workflows": [
+    { "binding": "PO_WORKFLOW", "name": "adl-po-workflow", "class_name": "PoWorkflow" },
+  ],
+}

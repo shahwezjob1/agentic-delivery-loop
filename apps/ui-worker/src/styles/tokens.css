@@ -1,0 +1,15 @@
+:root {
+  --bg: #f4f7fb;
+  --surface: #fff;
+  --surface2: #edf3fa;
+  --text: #142033;
+  --muted: #5f6c80;
+  --brand: #1769e0;
+  --border: #d7e0eb;
+  --success: #18794e;
+  --danger: #b42318;
+  --radius: 12px;
+  --shadow: 0 8px 24px rgba(30, 55, 90, 0.08);
+  --space: 16px;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}

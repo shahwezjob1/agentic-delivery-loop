@@ -1,0 +1,31 @@
+{
+  "name": "@agentic-delivery-loop/ui-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "cf:types": "wrangler types -c wrangler.jsonc -c ../domain-api-worker/wrangler.jsonc -c ../wingman-agent-worker/wrangler.jsonc -c ../dev-agent-worker/wrangler.jsonc",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@agentic-delivery-loop/contracts": "workspace:*",
+    "@cloudflare/ai-chat": "0.8.5",
+    "agents": "0.20.1",
+    "ai": "7.0.162",
+    "hono": "4.12.31",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.65.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "5.1.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "wrangler": "4.158.0"
+  }
+}

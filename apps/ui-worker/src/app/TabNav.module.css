@@ -1,0 +1,12 @@
+.nav {
+  display: flex;
+  gap: 7px;
+}
+.nav button {
+  border: 0;
+  border-radius: 8px 8px 0 0;
+}
+.nav .active {
+  background: var(--brand);
+  color: #fff;
+}

@@ -1,0 +1,7 @@
+.box {
+  padding: 28px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+  background: var(--surface);
+}

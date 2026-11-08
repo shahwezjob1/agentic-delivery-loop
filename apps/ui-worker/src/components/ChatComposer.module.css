@@ -1,0 +1,12 @@
+.form {
+  margin-top: 18px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.form button {
+  margin-top: 10px;
+  background: var(--brand);
+  color: #fff;
+}

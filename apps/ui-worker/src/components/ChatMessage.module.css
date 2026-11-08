@@ -1,0 +1,10 @@
+.message {
+  margin: 12px 0;
+}
+.message[data-role='user'] {
+  margin-left: 18%;
+  background: #e7f0ff;
+}
+.message p {
+  white-space: pre-wrap;
+}

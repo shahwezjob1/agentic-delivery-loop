@@ -1,0 +1,23 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  esbuild: true
+  workerd: true
+  core-js-pure: true
+  pnpm: false
+overrides:
+  wrangler: 4.158.0
+  typescript: 7.0.2
+  prettier: 3.9.10
+  zod: 4.6.7
+  agents: 0.33.0
+  '@cloudflare/ai-chat': 0.8.5
+  ai: 7.0.162
+  '@ai-sdk/provider': 4.0.35
+  hono: 4.12.31
+  vite: 8.3.6
+  '@cloudflare/vite-plugin': 1.65.0
+  react: 19.2.0
+  react-dom: 19.2.0
+  '@vitejs/plugin-react': 5.1.0

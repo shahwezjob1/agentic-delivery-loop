@@ -1,0 +1,44 @@
+{
+  "name": "agentic-delivery-loop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=24 <27"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @agentic-delivery-loop/ui-worker dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "cf:types": "pnpm -r --if-present cf:types",
+    "cf:types:check": "node scripts/check-generated-types.mjs",
+    "validate": "pnpm cf:types:check && pnpm typecheck && pnpm format:check && pnpm build",
+    "provision:d1": "node scripts/provision-d1.mjs",
+    "provision:vectorize": "node scripts/provision-vectorize.mjs",
+    "provision:verify": "node scripts/verify-provisioning.mjs",
+    "db:migrate:local": "pnpm --filter @agentic-delivery-loop/domain-api-worker db:migrate:local",
+    "db:migrate:remote": "pnpm --filter @agentic-delivery-loop/domain-api-worker db:migrate:remote",
+    "secret:github": "pnpm --filter @agentic-delivery-loop/dev-agent-worker secret:github",
+    "deploy:domain-api": "wrangler deploy --config apps/domain-api-worker/wrangler.jsonc",
+    "deploy:wingman": "wrangler deploy --config apps/wingman-agent-worker/wrangler.jsonc",
+    "deploy:po-workflow": "wrangler deploy --config apps/po-workflow-worker/wrangler.jsonc",
+    "deploy:dev-agent": "wrangler deploy --config apps/dev-agent-worker/wrangler.jsonc",
+    "deploy:ui": "wrangler deploy --config apps/ui-worker/wrangler.jsonc",
+    "deploy:all": "node scripts/deploy-all.mjs"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "^4.0.35",
+    "@types/node": "^26.6.6",
+    "agents": "^0.33.0",
+    "ai": "^7.0.162",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "wrangler": "4.158.0"
+  },
+  "dependencies": {
+    "pnpm": "^12.18.0"
+  }
+}

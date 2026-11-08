@@ -1,0 +1,18 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+.wrap span {
+  padding: 0 12px;
+}
+.wrap form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.wrap input {
+  width: 70px;
+}

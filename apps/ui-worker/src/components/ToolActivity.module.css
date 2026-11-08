@@ -1,0 +1,10 @@
+.tool {
+  margin-top: 10px;
+  padding: 12px;
+  border-left: 4px solid var(--brand);
+  background: var(--surface2);
+}
+.tool span {
+  margin-left: 10px;
+  color: var(--muted);
+}

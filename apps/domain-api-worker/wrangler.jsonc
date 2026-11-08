@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "agentic-delivery-loop-domain-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-08",
+  "compatibility_flags": ["nodejs_compat", "rpc"],
+  "workers_dev": false,
+  "upload_source_maps": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "adl-sql-db",
+      "database_id": "09c64667-f52b-4b5c-ad0f-2b1135b014ba",
+      "migrations_dir": "migrations",
+    },
+  ],
+}
