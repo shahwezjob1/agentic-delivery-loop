@@ -11,4 +11,10 @@
     "bindings": [{ "name": "WINGMAN_AGENT", "class_name": "WingmanAgent" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WingmanAgent"] }],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+  },
 }

@@ -1,5 +1,9 @@
 {
   "extends": "../../packages/tsconfig/react.json",
-  "compilerOptions": { "jsx": "react-jsx", "composite": true, "types": ["./worker-configuration.d.ts"] },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "composite": true,
+    "types": ["./worker-configuration.d.ts"]
+  },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "worker-configuration.d.ts"]
 }

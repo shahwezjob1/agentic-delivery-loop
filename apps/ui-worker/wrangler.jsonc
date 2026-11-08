@@ -16,4 +16,10 @@
     { "binding": "WINGMAN_AGENT", "service": "agentic-delivery-loop-wingman-agent" },
     { "binding": "DEV_AGENT", "service": "agentic-delivery-loop-dev-agent" },
   ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+  },
 }

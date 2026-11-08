@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@agentic-delivery-loop/contracts": "workspace:*",
-    "@cloudflare/ai-chat": "0.8.5",
-    "agents": "0.20.1",
+    "@cloudflare/ai-chat": "0.12.2",
+    "agents": "0.33.0",
     "ai": "7.0.162",
     "hono": "4.12.31",
     "react": "19.2.0",

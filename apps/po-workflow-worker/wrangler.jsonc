@@ -12,4 +12,10 @@
   "workflows": [
     { "binding": "PO_WORKFLOW", "name": "adl-po-workflow", "class_name": "PoWorkflow" },
   ],
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+    },
+  },
 }
