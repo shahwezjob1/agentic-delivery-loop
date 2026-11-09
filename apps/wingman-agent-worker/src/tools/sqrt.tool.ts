@@ -1,5 +1,11 @@
 import type { Tool } from 'ai';
-import { InputSchema, OutputSchema } from './add.tool';
+import { z } from 'zod';
+
+export const SqrtInputSchema = z.object({
+  number: z.number(),
+});
+
+export const SqrtOutputSchema = z.number();
 
 export function createSqrtTool(): Tool {
   return {
@@ -11,18 +17,8 @@ export function createSqrtTool(): Tool {
         type: 'number',
       },
     ],
-    inputSchema: {
-      type: 'object',
-      properties: {
-        number: {
-          type: 'number',
-        },
-      },
-      required: ['number'],
-    },
-    outputSchema: {
-      type: 'number',
-    },
-    execute: (args: InputSchema) => Math.sqrt(args.number),
+    inputSchema: SqrtInputSchema,
+    outputSchema: SqrtOutputSchema,
+    execute: (args: z.infer<typeof SqrtInputSchema>) => Math.sqrt(args.number),
   };
 }
