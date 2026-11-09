@@ -433,7 +433,7 @@ export const EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5' as const;
 export const PO_DECISION_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
 
 export const EMBEDDING_DIMENSIONS = 768;
-export const PO_MODEL_MAX_TOKENS = 500;
+export const PO_MODEL_MAX_TOKENS = 900;
 ```
 
 No environment-based model switching is required for the POC.
@@ -478,6 +478,12 @@ export function buildPoDecisionMessages(input: {
 
 Prompt requirements:
 
+- keep the system prompt as one readable multi-line template string (`SYSTEM_PROMPT`) so it can be edited by hand;
+- cast the model as product owner and tech lead for Wingman who refines one request into one self-contained tool ticket (see ARCHITECTURE.md "Refinement policy");
+- link only when the candidate fully delivers the request, otherwise create;
+- allow one controlled generalization that still satisfies the original request;
+- require the description order Goal, Tool name, Inputs, Output, Examples, Errors;
+- require a one-sentence `refinementNote` for created tickets;
 - include request name and description;
 - include all surviving candidate fields and similarity scores;
 - require create or link according to supplied schema;
@@ -507,12 +513,14 @@ Responsibilities:
 
 - choose create-only schema when `candidates.length === 0`;
 - otherwise use create-or-link schema;
-- invoke `PO_DECISION_MODEL` with `stream: false`, `max_tokens: 500`, `temperature: 0`, and `response_format.type: "json_schema"`;
+- invoke `PO_DECISION_MODEL` with `stream: false`, `max_tokens: 900`, `temperature: 0.2`, and `response_format.type: "json_schema"`;
 - decode the SDK response field;
 - validate with Zod;
 - trim generated create fields;
 - call `assertSelectedCandidate()` for link;
-- make no retry or repair call.
+- log one `po.decision` info event with request ID, action, candidate count and (for create) ticket name and `refinementNote`;
+- make no retry or repair call;
+- on any failure (call, decode, validation, candidate check) log `po.decision.fallback_create` with the root cause and return a create decision that copies the request name and description with `refinementNote: "Kept as requested."`.
 
 Do not call Domain API or Vectorize here.
 
@@ -579,6 +587,7 @@ export type CreateDecision = {
   action: 'create';
   ticketName: string;
   ticketDescription: string;
+  refinementNote: string;
 };
 
 export type LinkDecision = {
@@ -592,7 +601,8 @@ export type PoDecision = CreateDecision | LinkDecision;
 Schema rules:
 
 - discriminated by `action`;
-- create requires only `action`, `ticketName`, `ticketDescription`;
+- create requires only `action`, `ticketName`, `ticketDescription`, `refinementNote`;
+- refinement note trimmed length 1 to 200 (shown in the PO log and Worker logs);
 - link requires only `action`, `ticketId`;
 - no additional properties;
 - ticket name trimmed length 1 to 50;
@@ -749,26 +759,20 @@ export async function appendSuccessfulPoLog(input: {
 
 `appendSuccessfulPoLog()` calls `appendPoLog({ message })` and applies `unwrapRpcResult()`. The message must be 1 to 3,000 trimmed characters (enforced by Domain API); with the 50-character name and 1,000-character description limits it always fits, so no truncation is performed.
 
-Required text:
+Required text (three lines):
 
 ```text
-Selected request ID: ...
-Created and linked to new ticket ID: ...
-Request name: ...
-Request details: ...
-Ticket name: ...
-Ticket details: ...
+Selected request ID: ... | Request name: ...
+Created ticket ID: ... | Ticket name: ...
+Refinement note: ...
 ```
 
 or:
 
 ```text
-Selected request ID: ...
-Linked to existing ticket ID: ...
-Request name: ...
-Request details: ...
-Ticket name: ...
-Ticket details: ...
+Selected request ID: ... | Request name: ...
+Linked ticket ID: ... | Ticket name: ...
+Refinement note: Linked to existing ticket.
 ```
 
 Append exactly one PO log after a successful S5 commit. Do not write PO logs for empty runs or failures.

@@ -56,6 +56,7 @@ export async function commitPoDecision(input: {
       ticketId: result.ticket.id,
       ticketName: result.ticket.name,
       ticketDescription: result.ticket.description,
+      refinementNote: input.decision.refinementNote,
     };
   }
   const result = unwrapRpcResult(
@@ -70,5 +71,6 @@ export async function commitPoDecision(input: {
     ticketId: result.ticket.id,
     ticketName: result.ticket.name,
     ticketDescription: result.ticket.description,
+    refinementNote: 'Linked to existing ticket.',
   };
 }

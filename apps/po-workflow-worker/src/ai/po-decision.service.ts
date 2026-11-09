@@ -2,6 +2,7 @@ import type { FeatureRequestDto } from '@agentic-delivery-loop/contracts';
 import { PO_DECISION_MODEL, PO_MODEL_MAX_TOKENS } from './models';
 import { buildPoDecisionMessages } from './po-prompt';
 import { assertSelectedCandidate } from '../policies/candidate-policy';
+import { logSchedulerError } from '../logging/system-log';
 import {
   createDecisionJsonSchema,
   createDecisionZodSchema,
@@ -16,7 +17,7 @@ function decodeResponse(value: unknown): unknown {
   if (response !== undefined) return response;
   throw new Error('Workers AI returned no structured response');
 }
-export async function decideCreateOrLink(input: {
+async function decideWithModel(input: {
   ai: Ai;
   request: FeatureRequestDto;
   candidates: HydratedTicketCandidate[];
@@ -26,7 +27,7 @@ export async function decideCreateOrLink(input: {
     messages: buildPoDecisionMessages(input),
     stream: false,
     max_tokens: PO_MODEL_MAX_TOKENS,
-    temperature: 0,
+    temperature: 0.2,
     response_format: {
       type: 'json_schema',
       json_schema: noCandidates ? createDecisionJsonSchema : poDecisionJsonSchema,
@@ -47,6 +48,14 @@ export async function decideCreateOrLink(input: {
     throw parsed.error;
   }
   const decision: PoDecision = parsed.data;
+  console.info('po.decision', {
+    requestId: input.request.id,
+    action: decision.action,
+    candidateCount: input.candidates.length,
+    ...(decision.action === 'create'
+      ? { ticketName: decision.ticketName, refinementNote: decision.refinementNote }
+      : { ticketId: decision.ticketId }),
+  });
   if (decision.action === 'link') {
     assertSelectedCandidate({
       ticketId: decision.ticketId,
@@ -54,4 +63,27 @@ export async function decideCreateOrLink(input: {
     });
   }
   return decision;
+}
+
+// Safety net: if the model call, parsing, or candidate check fails for any reason, create a new
+// ticket that mirrors the request instead of failing the request. The root cause goes to Worker logs.
+export async function decideCreateOrLink(input: {
+  ai: Ai;
+  request: FeatureRequestDto;
+  candidates: HydratedTicketCandidate[];
+}): Promise<PoDecision> {
+  try {
+    return await decideWithModel(input);
+  } catch (error) {
+    logSchedulerError('po.decision.fallback_create', error, {
+      requestId: input.request.id,
+      candidateIds: input.candidates.map((candidate) => candidate.ticketId),
+    });
+    return {
+      action: 'create',
+      ticketName: input.request.name,
+      ticketDescription: input.request.description,
+      refinementNote: 'Kept as requested.',
+    };
+  }
 }

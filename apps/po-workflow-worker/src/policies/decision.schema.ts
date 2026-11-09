@@ -1,8 +1,9 @@
 import { z } from 'zod';
 const ticketName = z.string().trim().min(1).max(50);
 const ticketDescription = z.string().trim().min(1).max(1000);
+const refinementNote = z.string().trim().min(1).max(200);
 export const createDecisionZodSchema = z
-  .object({ action: z.literal('create'), ticketName, ticketDescription })
+  .object({ action: z.literal('create'), ticketName, ticketDescription, refinementNote })
   .strict();
 export const linkDecisionZodSchema = z
   .object({ action: z.literal('link'), ticketId: z.string().trim().min(1) })
@@ -21,8 +22,9 @@ export const createDecisionJsonSchema = {
     action: { type: 'string', enum: ['create'] },
     ticketName: { type: 'string', minLength: 1, maxLength: 50 },
     ticketDescription: { type: 'string', minLength: 1, maxLength: 1000 },
+    refinementNote: { type: 'string', minLength: 1, maxLength: 200 },
   },
-  required: ['action', 'ticketName', 'ticketDescription'],
+  required: ['action', 'ticketName', 'ticketDescription', 'refinementNote'],
 } as const;
 export const poDecisionJsonSchema = {
   type: 'object',
@@ -31,13 +33,14 @@ export const poDecisionJsonSchema = {
     action: { type: 'string', enum: ['create', 'link'] },
     ticketName: { type: 'string', minLength: 1, maxLength: 50 },
     ticketDescription: { type: 'string', minLength: 1, maxLength: 1000 },
+    refinementNote: { type: 'string', minLength: 1, maxLength: 200 },
     ticketId: { type: 'string', minLength: 1 },
   },
   required: ['action'],
   allOf: [
     {
       if: { properties: { action: { const: 'create' } } },
-      then: { required: ['ticketName', 'ticketDescription'] },
+      then: { required: ['ticketName', 'ticketDescription', 'refinementNote'] },
     },
     { if: { properties: { action: { const: 'link' } } }, then: { required: ['ticketId'] } },
   ],

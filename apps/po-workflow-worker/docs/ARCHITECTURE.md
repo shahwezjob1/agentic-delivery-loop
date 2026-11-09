@@ -388,8 +388,8 @@ Inference configuration:
 {
   messages,
   stream: false,
-  max_tokens: 500,
-  temperature: 0,
+  max_tokens: 900,
+  temperature: 0.2,
   response_format: {
     type: "json_schema",
     json_schema: schema,
@@ -409,6 +409,7 @@ type PoDecision =
       action: 'create';
       ticketName: string;
       ticketDescription: string;
+      refinementNote: string; // 1..200 chars, one sentence: what was changed versus the request
     }
   | {
       action: 'link';
@@ -438,6 +439,7 @@ After structured generation, perform these application boundary checks:
 - For `link`, require `ticketId` to equal one of the supplied candidate IDs.
 - Reject additional properties.
 - Do not repair malformed output and do not make a second inference call.
+- **Fallback.** If the inference call, response decoding, validation, or the candidate check fails for any reason (for example the model links to a ticket ID that is not a candidate), do not fail the request. Log `po.decision.fallback_create` with the request ID, candidate IDs and the error root cause to Worker logs, then create a new ticket using the request's own name and description with `refinementNote: "Kept as requested."`. This is not a repair or retry; no second inference call is made.
 
 #### With no candidates
 
@@ -448,10 +450,22 @@ interface CreateDecision {
   action: 'create';
   ticketName: string;
   ticketDescription: string;
+  refinementNote: string;
 }
 ```
 
-The model should turn the request into a clear implementation ticket while preserving the request's intended capability. It must not invent unrelated scope.
+The model acts as product owner and tech lead (see "Refinement policy"). It must preserve every requirement in the request and must not invent unrelated scope.
+
+#### Refinement policy
+
+The PO step represents the refinement between a raw user request and the coding task. It is one non-conversational model call, so it is deliberately conservative:
+
+- **Link only on full coverage.** Link when the candidate, once built, fully delivers the request. Partial coverage or doubt means create. A wrong link silently drops a requirement, which is the costliest mistake, so create is the default.
+- **Generalize in one controlled way.** When a more general tool fully includes the requested behaviour and is just as simple (for example "multiply a list of two or more numbers" for "multiply two numbers"), the ticket may ask for the general tool, and the original case must still work. Nothing unrelated is added and no requirement is dropped.
+- **Developer-ready description.** The description follows a fixed order: Goal, Tool name (snake_case), Inputs, Output, Examples, Errors. The Dev Agent reads this description as its work order and registers the tool under the suggested name.
+- **Self-contained tools.** Tickets describe one Wingman tool with no network, storage, or new dependencies, because that is all the Dev Agent can build. Larger asks are narrowed to the closest self-contained tool.
+- **Auditable.** `refinementNote` states what changed versus the request ("Kept as requested." when nothing). It is logged to Worker logs with the action so wrong refinements can be spotted.
+- **Backstop.** A bad ticket costs one pull request review. A human starts the Dev Agent and a human merges. There is no multi-turn clarification in this POC; if refinement quality proves weak, add a second critique pass before adding conversation.
 
 #### Prompt prohibitions
 
@@ -463,7 +477,9 @@ The system prompt must instruct the model:
 - do not treat similarity score as the sole decision criterion;
 - prefer create when no candidate is semantically appropriate;
 - keep the ticket name within 50 characters;
-- keep the ticket description within 1,000 characters.
+- keep the ticket description within 1,000 characters;
+- keep every requirement from the request and describe only one self-contained tool;
+- give a one-sentence `refinementNote` when creating.
 
 Never log complete prompts, raw model output, or reasoning.
 
@@ -494,29 +510,25 @@ Call exactly one Domain API commit RPC. Do not inspect or duplicate its internal
 
 After a successful commit, append exactly one PO log through Domain API.
 
-For creation:
+The log is three short lines:
 
 ```text
-Selected request ID: {requestId}
-Created and linked to new ticket ID: {ticketId}
-Request name: {requestName}
-Request details: {requestDescription}
-Ticket name: {ticketName}
-Ticket details: {ticketDescription}
+Selected request ID: {requestId} | Request name: {requestName}
+Created ticket ID: {ticketId} | Ticket name: {ticketName}
+Refinement note: {refinementNote}
 ```
 
-For linking:
+or, when linking to an existing ticket:
 
 ```text
-Selected request ID: {requestId}
-Linked to existing ticket ID: {ticketId}
-Request name: {requestName}
-Request details: {requestDescription}
-Ticket name: {ticketName}
-Ticket details: {ticketDescription}
+Selected request ID: {requestId} | Request name: {requestName}
+Linked ticket ID: {ticketId} | Ticket name: {ticketName}
+Refinement note: Linked to existing ticket.
 ```
 
-The PO log message must be 1 to 3,000 trimmed characters; Domain API enforces this. With request and ticket names limited to 50 characters and descriptions limited to 1,000 characters, the formatted message always fits, so PO Workflow does not truncate it.
+Descriptions are not logged; they are visible on the Requests and Tickets screens. The model's `refinementNote` for a created ticket is the third line of the PO log and is also written to Worker logs (`po.decision`). A linked request logs "Linked to existing ticket."
+
+The PO log message must be 1 to 3,000 trimmed characters; Domain API enforces this. The short format (two IDs, two names of at most 50 characters and a note of at most 200 characters) always fits, so PO Workflow does not truncate it.
 
 The PO log is a single persisted record, even though its message is multiline. It contains no embedding, prompt, raw model response, stack trace, or similarity score.
 
@@ -666,7 +678,7 @@ export const PENDING_REQUEST_PAGE_SIZE = 5;
 export const VECTOR_TOP_K = 3;
 export const MINIMUM_CANDIDATE_SIMILARITY = 0.7;
 export const EMBEDDING_DIMENSIONS = 768;
-export const PO_MODEL_MAX_TOKENS = 500;
+export const PO_MODEL_MAX_TOKENS = 900;
 ```
 
 Model identifiers:

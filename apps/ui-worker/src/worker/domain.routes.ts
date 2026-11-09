@@ -38,7 +38,7 @@ export function registerDomainRoutes(app: Hono<AppEnv>): void {
     try {
       const r = await c.env.DOMAIN_API.listRequests({
         page: p,
-        pageSize: 5,
+        pageSize: 4,
         ...(status ? { status } : {}),
       });
       return r.ok
@@ -54,7 +54,7 @@ export function registerDomainRoutes(app: Hono<AppEnv>): void {
     try {
       const r = await c.env.DOMAIN_API.listTickets({
         page: p,
-        pageSize: 5,
+        pageSize: 4,
         ...(status ? { status } : {}),
       });
       return r.ok
@@ -67,7 +67,7 @@ export function registerDomainRoutes(app: Hono<AppEnv>): void {
   app.get('/api/po-logs', async (c) => {
     const p = page(c.req.query('page'));
     try {
-      const r = await c.env.DOMAIN_API.listPoLogs({ page: p, pageSize: 20 });
+      const r = await c.env.DOMAIN_API.listPoLogs({ page: p, pageSize: 8 });
       return r.ok
         ? c.json(r.data)
         : failure('/api/po-logs', 'listPoLogs', p, undefined, r.error, r.error.code);

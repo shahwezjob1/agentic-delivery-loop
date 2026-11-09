@@ -30,6 +30,7 @@ export interface CommitResult {
   ticketId: string;
   ticketName: string;
   ticketDescription: string;
+  refinementNote: string;
 }
 export type RequestProcessResult =
   | { outcome: 'created'; requestId: string; ticketId: string }

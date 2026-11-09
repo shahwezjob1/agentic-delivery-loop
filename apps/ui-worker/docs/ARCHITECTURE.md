@@ -178,9 +178,9 @@ The UI Worker supplies fixed page sizes when invoking Domain API RPC:
 
 | Resource | Page size | Order        |
 | -------- | --------: | ------------ |
-| Requests |         5 | oldest first |
-| Tickets  |         5 | oldest first |
-| PO logs  |        20 | oldest first |
+| Requests |         4 | oldest first |
+| Tickets  |         4 | oldest first |
+| PO logs  |         8 | oldest first |
 
 An absent `status` parameter means all statuses. There is no `status=all` value.
 

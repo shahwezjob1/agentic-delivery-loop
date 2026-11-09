@@ -6,17 +6,11 @@ export function formatSuccessfulPoLog(input: {
   request: FeatureRequestDto;
   commit: CommitResult;
 }): string {
-  const actionLine =
-    input.commit.action === 'create'
-      ? `Created and linked to new ticket ID: ${input.commit.ticketId}`
-      : `Linked to existing ticket ID: ${input.commit.ticketId}`;
+  const verb = input.commit.action === 'create' ? 'Created' : 'Linked';
   return [
-    `Selected request ID: ${input.request.id}`,
-    actionLine,
-    `Request name: ${input.request.name}`,
-    `Request details: ${input.request.description}`,
-    `Ticket name: ${input.commit.ticketName}`,
-    `Ticket details: ${input.commit.ticketDescription}`,
+    `Selected request ID: ${input.request.id} | Request name: ${input.request.name}`,
+    `${verb} ticket ID: ${input.commit.ticketId} | Ticket name: ${input.commit.ticketName}`,
+    `Refinement note: ${input.commit.refinementNote}`,
   ].join('\n');
 }
 export async function appendSuccessfulPoLog(input: {

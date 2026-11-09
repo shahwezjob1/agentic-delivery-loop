@@ -258,7 +258,7 @@ Handler behavior:
 
 - Read `page`, defaulting to 1 only if omitted.
 - Read optional `status` for Requests and Tickets.
-- Use fixed page sizes 5, 5, and 20.
+- Use fixed page sizes 4 (requests), 4 (tickets), and 8 (PO logs).
 - Call typed Domain API RPC: `env.DOMAIN_API.listRequests(...)`, `listTickets(...)`, or `listPoLogs(...)`, each returning `RpcResult<PageResult<...>>`.
 - On `ok: true`, return `result.data` (`PageResult<FeatureRequestDto>`, `PageResult<TicketDto>`, or `PageResult<PoLogDto>`) with `items`, `page`, `pageSize`, and `totalPages` passed through unchanged.
 - On `ok: false` or a thrown RPC exception, log structured context (including `result.error.code` when present) and return the sanitized `502` `UPSTREAM_ERROR` response.
