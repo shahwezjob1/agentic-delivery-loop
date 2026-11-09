@@ -56,7 +56,7 @@ export async function processPendingRequest(input: {
       return committed;
     });
     currentStep = name(6, 'upsert-vector');
-    await input.step.do(currentStep, ZERO_RETRY_STEP_CONFIG, async () => {
+    const upsertResult = await input.step.do(currentStep, ZERO_RETRY_STEP_CONFIG, async () => {
       if (commit.action === 'link') return { skipped: true };
       await upsertCanonicalVector({
         index: input.env.TICKET_INDEX,
@@ -65,6 +65,10 @@ export async function processPendingRequest(input: {
       });
       return { skipped: false };
     });
+    if (!upsertResult.skipped) {
+      currentStep = name(7, 'wait-for-vector-indexing');
+      await input.step.sleep(currentStep, '10 seconds');
+    }
     return {
       outcome: commit.action === 'create' ? 'created' : 'linked',
       requestId: input.request.id,
