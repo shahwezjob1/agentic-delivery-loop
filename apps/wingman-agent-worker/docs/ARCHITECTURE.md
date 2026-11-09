@@ -119,7 +119,7 @@ For the POC, conversations created through `invokeTurn()` are not explicitly del
 6. Create the complete tool object through `createWingmanTools(env)`.
 7. Invoke `@cf/zai-org/glm-4.7-flash` through the Cloudflare AI SDK provider.
 8. Permit a maximum of five model/tool steps for a turn.
-9. Limit model output to approximately 400 output tokens per model call.
+9. Limit model output to approximately 800 output tokens per model call (a `create_feature_request` call can carry a 1,000-character description plus the name in its arguments, which does not reliably fit in 400).
 10. Keep parallel tool calls enabled.
 11. Return the normal UI message stream response expected by `AIChatAgent` and `useAgentChat`.
 12. Allow the Cloudflare chat harness to persist assistant and tool messages and to provide resumable streaming.
@@ -166,7 +166,7 @@ The shared execution service must own these invariants:
 - system prompt: `buildWingmanSystemPrompt()`;
 - tools: `createWingmanTools(env)`;
 - maximum five steps;
-- approximately 400 output tokens per model call;
+- approximately 800 output tokens per model call;
 - parallel tool calls enabled;
 - no unsupported operation may be answered through model calculation.
 
@@ -579,7 +579,7 @@ The implementation is ready for handoff when all of the following are demonstrat
 - Model context: approximately ten recent complete messages via supported pruning abstractions.
 - Persistence/display: retain and show the complete stored conversation.
 - Maximum steps: five.
-- Approximate output cap: 400 tokens per model call.
+- Approximate output cap: 800 tokens per model call.
 - Parallel tool calls: enabled.
 - Request name maximum: 50 characters.
 - Request description maximum: 1,000 characters.

@@ -34,12 +34,6 @@ export class DomainClient {
       throw e;
     }
   }
-  getTicket(input: { ticketId: string }) {
-    return this.call<TicketDto>(
-      'getTicket',
-      () => this.service.getTicket(input) as Promise<RpcResult<TicketDto>>,
-    );
-  }
   startOldestAcceptedTicket() {
     return this.call<TicketDto | null>(
       'startOldestAcceptedTicket',

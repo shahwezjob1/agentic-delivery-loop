@@ -11,13 +11,14 @@ export function createDomainTools(c: DevToolContext) {
     log: c.logger,
   };
   return {
-    get_ticket: tool({
-      description: 'Get a development ticket by UUID.',
-      inputSchema: z.object({ ticketId: z.uuid() }).strict(),
-      execute: async (x) => ({ ok: true, ticket: await c.domain.getTicket(x) }),
-    }),
     start_oldest_accepted_ticket: tool({
-      description: 'Start the oldest accepted ticket when no ticket is active.',
+      description: `
+Claim the oldest accepted development ticket and mark it in progress.
+Use this when the user asks to start, continue, or take the next ticket.
+Call it with no arguments. Do not use it when a ticket is already active.
+Returns the ticket id, name and description, or a message saying no accepted
+ticket exists. After success the next step is create_branch.
+`,
       inputSchema: z.object({}).strict(),
       execute: async () => {
         const ticket = await startOldestTicket(deps);

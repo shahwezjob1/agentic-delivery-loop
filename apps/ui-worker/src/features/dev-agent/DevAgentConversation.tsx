@@ -13,7 +13,7 @@ export function DevAgentConversation({ conversationId }: { conversationId: strin
           <ChatMessage key={m.id} message={m} />
         ))}
         {c.error && <p role="alert">Unable to complete that turn. Try again.</p>}
-        <ChatComposer disabled={busy} maxLength={300} onSubmit={c.sendMessage} />
+        <ChatComposer disabled={busy} maxLength={1000} onSubmit={c.sendMessage} />
       </div>
     </div>
   );

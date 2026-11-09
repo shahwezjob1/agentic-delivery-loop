@@ -12,8 +12,8 @@ export interface DevConfig {
   model: {
     name: '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
     temperature: 0.2;
-    maxOutputTokens: 1500;
-    maxSteps: 15;
+    maxOutputTokens: 4096;
+    maxSteps: 20;
   };
 }
 export function loadConfig(env: Env): DevConfig {
@@ -42,8 +42,8 @@ export function loadConfig(env: Env): DevConfig {
     model: {
       name: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
       temperature: 0.2,
-      maxOutputTokens: 1500,
-      maxSteps: 15,
+      maxOutputTokens: 4096,
+      maxSteps: 20,
     },
   };
 }

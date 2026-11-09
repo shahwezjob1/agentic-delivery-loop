@@ -3,7 +3,7 @@ import type { ModelMessage, UIMessage } from 'ai';
 import { InvalidWingmanPromptError } from '../errors/wingman-errors';
 
 export const WINGMAN_PROMPT_MIN_LENGTH = 1;
-export const WINGMAN_PROMPT_MAX_LENGTH = 100;
+export const WINGMAN_PROMPT_MAX_LENGTH = 300;
 export const WINGMAN_CONTEXT_TARGET_MESSAGES = 10;
 
 export function validatePrompt(text: string): string {

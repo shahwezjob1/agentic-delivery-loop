@@ -601,7 +601,7 @@ Props:
 ```ts
 interface ChatComposerProps {
   disabled: boolean;
-  maxLength: 100;
+  maxLength: number; // 100 for Wingman, 1000 for Dev Agent
   onSubmit(message: string): void | Promise<void>;
 }
 ```
@@ -609,7 +609,7 @@ interface ChatComposerProps {
 Responsibilities:
 
 - Controlled input.
-- Trim before checking 1 to 100 characters.
+- Trim before checking 1 to `maxLength` characters (Wingman passes 100, Dev Agent passes 1000).
 - Prevent duplicate submission while disabled.
 - Show concise validation feedback.
 - No Stop button.

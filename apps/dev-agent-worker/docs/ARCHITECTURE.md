@@ -153,49 +153,91 @@ Use Workers AI model:
 Configuration:
 
 - `temperature: 0.2`
-- `maxOutputTokens: 1500`
-- `stopWhen: stepCountIs(15)`
+- `maxOutputTokens: 4096`
+- `stopWhen: stepCountIs(20)`
 
-The model is selected because it supports function calling and is large enough for the limited TypeScript editing task.
+The model supports function calling and is large enough for the limited TypeScript editing task, so it is kept. Two things changed instead of the model:
+
+- `maxOutputTokens` is raised from 1,500 to 4,096 because `write_file` carries a whole TypeScript file inside the tool-call arguments, and a truncated call fails or writes a broken file.
+- The model sees only the one to four tools valid for the current phase (see "Phase-driven prompt and tools"). Small tool menus are the cheapest reliability gain for a function-calling model and also shrink the prompt, which lowers neuron use on the Workers AI free tier (10,000 neurons per day; confirm current pricing on the Workers AI pricing page).
+
+If tool calling still proves unreliable in the manual smoke run, move to a larger function-calling model from the Workers AI catalog rather than adding code. Larger models burn the free daily neuron budget faster, so change the model only on evidence.
+
+### Phase-driven prompt and tools
+
+The system prompt and the visible tool set are recomputed from `DevAgentState.status` before every model step. A phase is one lifecycle status.
+
+| Status           | Meaning                                       | Model-visible tools                                                        |
+| ---------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
+| `idle`           | No active ticket                              | `start_oldest_accepted_ticket`                                             |
+| `ticket_started` | Ticket is `in_progress`, no branch yet        | `create_branch`                                                            |
+| `branch_ready`   | Branch exists, no PR yet                      | `list_files`, `read_file`, `write_file`, `create_pull_request`             |
+| `pr_open`        | PR raised; human review/merge pending         | `list_files`, `read_file`, `write_file`, `get_pull_request_status`         |
+| `pr_merged`      | PR merge confirmed by `get_pull_request_status` | `verify_wingman_capability`                                              |
+
+`write_file` stays available in `pr_open` so the user can ask for changes from review comments; each write adds a commit to the same branch and the open PR updates itself. `create_pull_request` is hidden once a PR exists.
+
+Mechanism (a direct equivalent of rebinding tools per node in LangGraph, except there is no graph):
+
+```ts
+streamText({
+  model,
+  messages,
+  tools: allTools,                       // every tool is registered once
+  prepareStep: ({ stepNumber }) => {
+    const state = this.state;            // re-read: tools may have changed it this turn
+    return {
+      system: buildDevSystemPrompt({ state, ...config }),
+      activeTools: PHASE_TOOLS[state.status],
+    };
+  },
+});
+```
+
+Behavior notes for people coming from LangChain/LangGraph:
+
+- Cloudflare Agents does not provide its own tool-binding layer; `AIChatAgent` runs the Vercel AI SDK `streamText()`. Per-step `system` and `activeTools` overrides through `prepareStep` are therefore the supported way to do state-dependent prompts and tools. Nothing here is blocked by the Cloudflare platform.
+- The "state machine" is the Durable Object state (`this.state`) plus the `PHASE_TOOLS` table. There is no graph, checkpointer or conditional-edge API to learn.
+- `prepareStep` runs before each model step inside one user turn. When `start_oldest_accepted_ticket` succeeds and updates state, the very next step already sees `create_branch` and the new prompt, so the user does not need to send another message.
+- `activeTools` only hides tools from the model. Every tool still re-checks its lifecycle precondition in `execute()`, so a hidden or hallucinated call is rejected in code.
+- Earlier tool calls and results stay in the history even when their tool is hidden now. That is expected and is the reason history is not pruned (see below).
+- `prepareStep` and `activeTools` must exist in the baseline `ai` version. The root dependency compatibility spike must confirm this. Fallback if they do not: build the `tools` object and system prompt per turn from the current status, which gives the same behavior except that a phase change mid-turn is only visible on the next user message.
+
+The prompt texts live in `src/agent/dev-prompt.ts` as readable multi-line template strings, one per phase, so they can be edited by hand. The coding standards are a separate multi-line string in `src/agent/coding-guidelines.ts` (see "Coding guidelines for generated tools").
 
 ### Chat turn
 
 `onChatMessage()` performs:
 
-1. Validate that the latest user text is present and has 1 to 100 trimmed characters.
-2. Build the system prompt from static instructions plus current lifecycle state.
-3. Convert the full persisted `this.messages` collection with `convertToModelMessages()`.
-4. Do not call `pruneMessages()` and do not implement custom history pruning.
-5. Call `streamText()` with the model, full converted history, tools and limits.
-6. Return `result.toUIMessageStreamResponse()`.
+1. Validate that the latest user text is present and has 1 to 1,000 trimmed characters. (Dev needs room for pasted PR review comments; the 1 to 100 limit stays for Wingman prompts, including the verification prompt.)
+2. Convert the full persisted `this.messages` collection with `convertToModelMessages()`.
+3. Do not call `pruneMessages()` and do not implement custom history pruning.
+4. Call `streamText()` with the model, full converted history, the complete tool set, limits and the `prepareStep` callback above.
+5. Return `result.toUIMessageStreamResponse()`.
 
 The complete Dev conversation is sent while it fits the model context. If it exceeds the model context, return a clear error asking the user to start a new Dev conversation. Do not silently remove earlier messages.
 
 ### System prompt obligations
 
-The system prompt must tell the model to:
+Every phase prompt shares a short common block (role, only use the listed tools, never merge or deploy, never reveal secrets, be brief) and then adds phase-specific guidance:
 
-- Discuss plans and ask the user for guidance when useful.
-- Start work only after explicit user intent such as “start next ticket”.
-- Use the Domain tool to start the oldest accepted ticket.
-- Inspect existing Wingman tools and the registry before editing.
-- Create the smallest TypeScript change needed for the ticket.
-- Use only the available tools, never invent repository or runtime access.
-- Create a branch before file writes.
-- Use branch `agent/ticket-<ticketId>`.
-- Open a PR, then stop for human review (the lifecycle service saves the PR URL).
-- Never merge or deploy.
-- Verify only after the user says merge and deployment are complete.
-- Supply both a natural-language verification prompt and expected tool name.
-- Understand that the ticket is completed by the lifecycle service only when verification returns `verified: true`; there is no model tool for ticket status changes.
-- Resume the current ticket instead of starting another when state is not `idle`.
+- `idle`: Nudge the agent to call `start_oldest_accepted_ticket` immediately when the user asks to begin or continue; if it reports no accepted ticket, say so and stop. Casual conversation is allowed, but do not describe work that has not started.
+- `ticket_started`: Show the ticket name and description, then call `create_branch`. Do not write code yet.
+- `branch_ready`: Include the ticket name and description and the coding guidelines. Inspect first (`list_files`, then `read_file` on one existing tool and on the tool registry), then write the new tool file and the registry change with `write_file`, then call `create_pull_request` once. Make the smallest change that satisfies the ticket.
+- `pr_open`: The PR is raised and must not be re-created. Tell the user it awaits human review, merge and Wingman deployment. If the user asks for changes, edit with `write_file`. When the user says the PR is merged, or asks for status, call `get_pull_request_status`. Do not claim it is merged until the tool says so.
+- `pr_merged`: The merge is confirmed. Ask the user to confirm Wingman has been deployed if they have not said so, then call `verify_wingman_capability` with a short natural-language prompt that should make Wingman use the new tool and the exact tool name it expects.
 
 Prompt guidance controls the normal sequence. Security boundaries remain enforced in code.
 
 ## 8. Lifecycle state
 
 ```ts
-type DevLifecycleStatus = 'idle' | 'implementing' | 'awaiting_human' | 'verifying';
+type DevLifecycleStatus =
+  | 'idle' // no active ticket
+  | 'ticket_started' // ticket in_progress, no branch
+  | 'branch_ready' // branch exists, no PR
+  | 'pr_open' // PR raised, awaiting human review/merge
+  | 'pr_merged'; // merge confirmed, verification allowed
 
 interface ActiveTicketSummary {
   id: string;
@@ -237,20 +279,25 @@ State is persisted through the Agent state API and synchronized to connected UI 
 
 ```text
 idle
-  -> implementing       start oldest accepted ticket
+  -> ticket_started   start_oldest_accepted_ticket returned a ticket
+                      (stays idle when no accepted ticket exists)
 
-implementing
-  -> awaiting_human     PR created and its URL saved
-  -> implementing       recoverable implementation or PR failure
+ticket_started
+  -> branch_ready     create_branch succeeded
 
-awaiting_human
-  -> awaiting_human     PR not merged or verification failed
-  -> verifying          merged PR confirmed; verification starts
+branch_ready
+  -> pr_open          create_pull_request succeeded and its URL was saved
 
-verifying
-  -> idle               expected tool name observed and ticket completed
-  -> awaiting_human     verification did not observe expected tool or failed
+pr_open
+  -> pr_open          more commits, or get_pull_request_status reports not merged
+  -> pr_merged        get_pull_request_status reports merged_at !== null
+
+pr_merged
+  -> idle             verification returned verified: true and the ticket was completed
+  -> pr_merged        verification failed; user fixes/redeploys Wingman and retries
 ```
+
+Recoverable tool failures keep the current status and populate `lastError`. A failed verification does not reopen editing in this POC; fixing a wrong implementation after merge is outside the happy path.
 
 Starting another ticket is rejected unless state is `idle`.
 
@@ -262,7 +309,6 @@ Methods used (authoritative signatures come from the generated binding type; DTO
 
 | Method                                                   | Returns                                 | Caller                                                    |
 | -------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------- |
-| `getTicket({ ticketId })`                                | `Promise<RpcResult<TicketDto>>`         | `get_ticket` tool                                         |
 | `startOldestAcceptedTicket()`                            | `Promise<RpcResult<TicketDto \| null>>` | `start_oldest_accepted_ticket` tool via lifecycle service |
 | `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })` | `Promise<RpcResult<TicketDto>>`         | `lifecycle.service.ts`, after PR creation                 |
 | `completeTicket({ ticketId })`                           | `Promise<RpcResult<TicketDto>>`         | `lifecycle.service.ts`, after successful verification     |
@@ -384,31 +430,34 @@ Create a non-draft PR with:
 
 Before creating a PR, look for an existing PR with the exact head branch. Reuse its number and URL if present.
 
-After creation, `lifecycle.service.ts` saves the PR URL through `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })`, keeps PR number and branch in `DevAgentState`, and moves state to `awaiting_human`.
+After creation, `lifecycle.service.ts` saves the PR URL through `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })`, keeps PR number and branch in `DevAgentState`, and moves state to `pr_open`.
 
-For verification, fetch the PR and require `merged_at !== null`. A merely closed PR is not sufficient.
+`get_pull_request_status` fetches the PR and reports `merged` as `merged_at !== null`; a merely closed PR is not merged. The first time it reports merged, lifecycle moves state to `pr_merged`. The PR number comes from `DevAgentState`, not from the model.
 
 ## 11. Tool catalog
 
-All tools are server-side AI SDK tools with strict Zod schemas. Unknown fields are rejected.
+All tools are server-side AI SDK tools with strict Zod schemas. Unknown fields are rejected. All tools are registered once; `PHASE_TOOLS` (section 7) decides which are visible per phase, and each tool also asserts its own lifecycle precondition.
 
 ### Domain tools
 
-- `get_ticket({ ticketId })`
-- `start_oldest_accepted_ticket({})`
+- `start_oldest_accepted_ticket({})` (phase `idle`)
 
-Saving the PR URL (after PR creation) and completing the ticket (after successful verification) are internal `lifecycle.service.ts` operations, not model tools. There are no free-form ticket status or pull-request save tools.
+There is no tool to select a ticket by ID and no `get_ticket` tool. Saving the PR URL (after PR creation) and completing the ticket (after successful verification) are internal `lifecycle.service.ts` operations, not model tools. There are no free-form ticket status or pull-request save tools.
 
 ### GitHub tools
 
-- `create_branch({})`
-- `list_files({ path? })`
-- `read_file({ path })`
-- `write_file({ path, content, commitMessage? })`
-- `create_pull_request({ title, body })`
-- `get_pull_request_status({ pullRequestNumber })`
+- `create_branch({})` (phase `ticket_started`)
+- `list_files({ path? })` (phases `branch_ready`, `pr_open`)
+- `read_file({ path })` (phases `branch_ready`, `pr_open`)
+- `write_file({ path, content, commitMessage? })` (phases `branch_ready`, `pr_open`)
+- `create_pull_request({ title, body })` (phase `branch_ready`)
+- `get_pull_request_status({})` (phase `pr_open`; the PR number is read from state)
 
-The active ticket and branch come from lifecycle state. The model cannot provide owner, repository, token, arbitrary branch or base branch.
+The active ticket, branch and PR number come from lifecycle state. The model cannot provide owner, repository, token, arbitrary branch, base branch or PR number.
+
+### Tool descriptions
+
+Tool descriptions are part of the prompt and are written to say when to call the tool, when not to, and what comes next. The exact strings live in `src/tools/*.ts` (see REPO_MAP). Each description answers: what it does, when to use it, when not to, and what the result means for the next step.
 
 ### Verification tool
 
@@ -419,7 +468,7 @@ interface VerifyWingmanCapabilityInput {
 }
 ```
 
-Both strings are trimmed and required. `prompt` must satisfy the same 1 to 100 character rule as browser Wingman chat. `expectedToolName` is retained only by Dev and is never sent to Wingman.
+Both strings are trimmed and required. `prompt` must satisfy the same 1 to 100 character rule as browser Wingman chat (so it must be one short sentence). Visible only in phase `pr_merged`. `expectedToolName` is retained only by Dev and is never sent to Wingman.
 
 ## 12. Wingman verification integration
 
@@ -453,15 +502,13 @@ invokeTurn(input: InvokeWingmanTurnInput): Promise<WingmanTurnResult>;
 
 For every attempt, Dev:
 
-1. Requires lifecycle status `awaiting_human`.
-2. Fetches the PR and requires `merged_at !== null`.
-3. Moves state to `verifying`.
-4. Generates a new random conversation ID with `crypto.randomUUID()`.
-5. Obtains the `WingmanAgent` stub with `getAgentByName(env.WINGMAN_AGENT, conversationId)`.
-6. Calls `invokeTurn({ prompt })` and awaits the complete `WingmanTurnResult`.
-7. Checks whether any `toolCalls[].toolName` exactly equals `expectedToolName`.
-8. Returns a concise result with the normal Wingman response and simple tool log.
-9. Drops the conversation ID from Dev state after the attempt.
+1. Requires lifecycle status `pr_merged`.
+2. Generates a new random conversation ID with `crypto.randomUUID()`.
+3. Obtains the `WingmanAgent` stub with `getAgentByName(env.WINGMAN_AGENT, conversationId)`.
+4. Calls `invokeTurn({ prompt })` and awaits the complete `WingmanTurnResult`.
+5. Checks whether any `toolCalls[].toolName` exactly equals `expectedToolName`.
+6. Returns a concise result with the normal Wingman response and simple tool log.
+7. Drops the conversation ID from Dev state after the attempt.
 
 There is no custom application timeout. Platform/runtime failures are returned as verification errors.
 
@@ -507,11 +554,20 @@ Tools called:
 - add
 ```
 
-When `verified` is true, `lifecycle.service.ts` calls `completeTicket({ ticketId })`, clears active lifecycle fields and returns to `idle`. When false or when RPC fails, ticket remains `in_progress`, lifecycle returns to `awaiting_human`, and the user receives the result/error.
+When `verified` is true, `lifecycle.service.ts` calls `completeTicket({ ticketId })`, clears active lifecycle fields and returns to `idle`. When false or when RPC fails, the ticket remains `in_progress`, state stays `pr_merged` so verification can be retried after the user fixes or redeploys Wingman, and the user receives the result/error.
 
 ### Wingman implementation dependency
 
 Wingman's `invokeTurn()` runs its normal turn executor (the same prompt, model, registry and real tools as browser chat) and returns `{ responseMessage, toolCalls }`. The detail is owned by the Wingman LLD. Dev must not duplicate Wingman model/tool logic.
+
+### 12.1 Coding guidelines for generated tools
+
+Yes, the agent can be given the project's coding standards. Two mechanisms work together:
+
+1. **Written guidelines in the prompt.** A hand-maintained multi-line string in `src/agent/coding-guidelines.ts` states the conventions a new Wingman tool must follow (file name, factory name, strict Zod schema, description style, return shape, registry registration). It is injected into the `branch_ready` and `pr_open` prompts only.
+2. **Worked examples from the repository.** The `branch_ready` prompt requires the agent to `read_file` one existing tool (for example `add.tool.ts`) and `tool-registry.ts` before writing. Real code in the same repo is a stronger style signal than prose and stays correct when the code evolves.
+
+Because the allowed GitHub area is `apps/wingman-agent-worker/src/tools/` only, repository-wide files such as `AGENTS.md` or lint config are not readable by the agent. The guidelines string is therefore the only place where wider standards can be passed in. It must be updated whenever the Wingman tool conventions in the Wingman LLD change. Linting and typechecking of the generated code still happen in the human review and deployment step; the agent cannot run them.
 
 ## 13. Error handling
 
@@ -607,6 +663,8 @@ Never log the GitHub token, authorization headers, complete repository file cont
 10. Verification is true only when the exact expected tool name appears in the returned `toolCalls`.
 11. Ticket `done` is written only after true verification.
 12. Dev conversation input is not deliberately pruned.
+13. The model sees only the tools allowed for the current lifecycle status, and every tool re-checks that status in code.
+14. `verify_wingman_capability` is available only after the PR merge is confirmed.
 
 ## 17. Manual validation
 
@@ -615,17 +673,18 @@ No automated test packages are added. Implementation completion requires:
 - typecheck, `cf:types`, local run, and manual smoke validation, using the package scripts `dev` (`wrangler dev`), `typecheck`, `cf:types` and `deploy` (`wrangler deploy`).
 - Manual smoke flow:
   1. Connect through UI Worker.
-  2. Ask Dev to start the next ticket.
-  3. Confirm ticket becomes `in_progress`.
+  2. In `idle`, confirm only `start_oldest_accepted_ticket` is offered and the agent calls it when asked to start.
+  3. Confirm the ticket becomes `in_progress` and the agent proceeds to `create_branch` in the same turn.
   4. Confirm branch format.
-  5. Confirm reads/writes reject paths outside the allowed root.
-  6. Confirm PR is created and its URL saved.
-  7. Confirm verification is refused before merge.
-  8. Merge and manually deploy Wingman.
-  9. Invoke verification.
-  10. Confirm fresh Wingman conversation, response and tool log.
-  11. Confirm ticket becomes `done` only when the expected tool name appears.
-  12. Confirm structured events are visible in Cloudflare observability.
+  5. Confirm only `list_files`, `read_file`, `write_file` and `create_pull_request` are offered, the prompt shows the ticket description, and reads/writes reject paths outside the allowed root.
+  6. Confirm the generated tool follows the coding guidelines and is registered in the tool registry.
+  7. Confirm the PR is created, its URL saved, and `create_pull_request` is no longer offered.
+  8. Ask for a small change; confirm a new commit lands on the same branch.
+  9. Confirm `verify_wingman_capability` is not offered before merge, and that `get_pull_request_status` says not merged.
+  10. Merge and manually deploy Wingman, then confirm `get_pull_request_status` reports merged and verification becomes available.
+  11. Invoke verification and confirm a fresh Wingman conversation, response and tool log.
+  12. Confirm the ticket becomes `done` only when the expected tool name appears.
+  13. Confirm structured events are visible in Cloudflare observability.
 
 ## 18. Authoritative references
 

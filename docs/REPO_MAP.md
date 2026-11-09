@@ -486,7 +486,7 @@ export interface WingmanVerificationResult {
   toolsCalled: Array<{ toolName: string }>;
 }
 
-export interface DevAgentPublicState;
+export interface DevAgentPublicState; // status: idle | ticket_started | branch_ready | pr_open | pr_merged
 ```
 
 `UIMessage` comes from `import type { UIMessage } from "ai"` (type-only; `ai` is a dev/peer dependency of contracts at the baseline version). Each event variant has a stable discriminant and JSON-serializable fields. Detailed producer behavior remains in agent module LLDs.

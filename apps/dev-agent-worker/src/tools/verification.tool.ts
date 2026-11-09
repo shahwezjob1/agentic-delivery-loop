@@ -9,22 +9,21 @@ export const verifyWingmanCapabilityInputSchema = z
   .strict();
 export function createVerificationTool(c: DevToolContext) {
   return tool({
-    description: 'Verify a deployed Wingman capability after its PR is merged.',
+    description: `
+Check that the newly merged and deployed Wingman tool really works. Call it only after the
+pull request is confirmed merged and the user says Wingman is deployed.
+"prompt" is one short natural sentence (at most 100 characters) a user would say to make
+Wingman use the new tool. "expectedToolName" is the exact registered tool name.
+Success means Wingman actually called that tool. It does not judge the answer text.
+`,
     inputSchema: verifyWingmanCapabilityInputSchema,
     execute: async (input: VerifyWingmanCapabilityInput) => {
       const s = c.getState();
       assertCanVerify(s);
-      const pr = await c.github.getPullRequest(s.pullRequest!.number);
-      if (pr.merged_at === null) throw new Error('PULL_REQUEST_NOT_MERGED');
-      c.setState({
-        ...s,
-        status: 'verifying',
-        expectedToolName: input.expectedToolName,
-        lastError: null,
-      });
+      c.setState({ ...s, expectedToolName: input.expectedToolName, lastError: null });
       try {
         const result = await c.verification.verifyDeployedWingman(input);
-        c.setState({ ...c.getState(), status: 'awaiting_human', lastVerification: result });
+        c.setState({ ...c.getState(), lastVerification: result });
         if (result.verified)
           await completeVerifiedTicket(
             {
@@ -40,7 +39,6 @@ export function createVerificationTool(c: DevToolContext) {
       } catch (e) {
         c.setState({
           ...c.getState(),
-          status: 'awaiting_human',
           lastError: {
             phase: 'verification',
             code: 'WINGMAN_VERIFICATION_FAILED',

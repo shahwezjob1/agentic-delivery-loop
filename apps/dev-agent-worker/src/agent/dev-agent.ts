@@ -9,6 +9,7 @@ import { createLogger } from '../observability/logger';
 import { createDevTools } from '../tools/tool-registry';
 import { VerificationService } from '../verification/verification.service';
 import { buildDevSystemPrompt } from './dev-prompt';
+import { PHASE_TOOLS } from './phase-config';
 import { INITIAL_DEV_AGENT_STATE, type DevAgentState } from './dev-state';
 function latest(messages: unknown[]): string {
   const m = messages.at(-1) as
@@ -27,8 +28,8 @@ export class DevAgent extends AIChatAgent<Env, DevAgentState> {
     const log = createLogger();
     try {
       const text = latest(this.messages);
-      if (text.length < 1 || text.length > 100)
-        return new Response('Prompt must contain 1 to 100 characters.', { status: 400 });
+      if (text.length < 1 || text.length > 1000)
+        return new Response('Prompt must contain 1 to 1000 characters.', { status: 400 });
       const config = loadConfig(this.env);
       const domain = new DomainClient(this.env.DOMAIN_API, log);
       const github = new GitHubClient(
@@ -55,13 +56,18 @@ export class DevAgent extends AIChatAgent<Env, DevAgentState> {
       };
       const result = streamText({
         model: createAI({ binding: this.env.AI })(config.model.name),
-        system: buildDevSystemPrompt({
-          state: this.state,
-          allowedRoot: config.github.allowedRoot,
-          baseBranch: config.github.baseBranch,
-        }),
         messages: await convertToModelMessages(this.messages),
         tools: createDevTools(context),
+        // Re-read state before every step so a tool that advances the phase
+        // (for example start_oldest_accepted_ticket) changes the prompt and tools immediately.
+        prepareStep: () => ({
+          system: buildDevSystemPrompt({
+            state: this.state,
+            allowedRoot: config.github.allowedRoot,
+            baseBranch: config.github.baseBranch,
+          }),
+          activeTools: [...PHASE_TOOLS[this.state.status]],
+        }),
         temperature: config.model.temperature,
         maxOutputTokens: config.model.maxOutputTokens,
         stopWhen: stepCountIs(config.model.maxSteps),

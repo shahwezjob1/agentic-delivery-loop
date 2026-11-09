@@ -545,7 +545,7 @@ useAgentChat(...)
 Composer rules:
 
 - Trim input before validation and submission.
-- Length after trimming must be 1 to 100 characters.
+- Length after trimming must be 1 to 100 characters for Wingman and 1 to 1,000 characters for Dev Agent (Dev needs room for pasted PR review comments). The limit is a composer prop, not a shared constant.
 - The composer is enabled only when the hook is ready for a new turn.
 - Disable the composer and submit action while submitted or streaming.
 - Ignore duplicate submissions during an active turn.
@@ -601,7 +601,12 @@ Tool rendering must tolerate partial streaming states and missing optional field
 ### 18.1 State contracts
 
 ```ts
-export type DevLifecycleStatus = 'idle' | 'implementing' | 'awaiting_human' | 'verifying';
+export type DevLifecycleStatus =
+  | 'idle' // no active ticket
+  | 'ticket_started' // ticket in progress, no branch yet
+  | 'branch_ready' // branch exists, implementing
+  | 'pr_open' // PR raised, awaiting human review/merge
+  | 'pr_merged'; // merge confirmed, verification allowed
 
 export interface ActiveTicketSummary {
   id: string;
@@ -666,7 +671,7 @@ State is persisted by the Agent state API and synchronized to connected clients.
 
 The panel conditionally displays:
 
-- Lifecycle status.
+- Lifecycle status, shown with a readable label: `idle` "No active ticket", `ticket_started` "Ticket started", `branch_ready` "Implementing", `pr_open` "PR open, awaiting review", `pr_merged` "PR merged, ready to verify". The UI only maps labels and never infers transitions.
 - Active ticket name, ID, description, and in-progress status.
 - Branch.
 - PR number, branch, base branch, and external link.

@@ -16,9 +16,11 @@ apps/dev-agent-worker/
 ├── wrangler.jsonc
 └── src/
     ├── agent/
+    │   ├── coding-guidelines.ts
     │   ├── dev-agent.ts
     │   ├── dev-prompt.ts
     │   ├── dev-state.ts
+    │   ├── phase-config.ts
     │   └── lifecycle.service.ts
     ├── domain/
     │   └── domain-client.ts
@@ -219,12 +221,12 @@ export class DevAgent extends AIChatAgent<Env, DevAgentState> {
 Responsibilities:
 
 - Initialize model provider with `createAI({ binding: this.env.AI })`.
-- Validate latest user prompt, trimmed length 1 to 100.
+- Validate latest user prompt, trimmed length 1 to 1,000.
 - Convert the complete persisted message list with `convertToModelMessages(this.messages)`.
 - Do not invoke `pruneMessages()`.
-- Build prompt using `buildDevSystemPrompt()`.
-- Build server tools using `createDevTools()`.
-- Call `streamText()` with the fixed model, temperature, output and step limits.
+- Build the complete tool set once per turn using `createDevTools()`.
+- Call `streamText()` with the fixed model, temperature (`0.2`), `maxOutputTokens: 4096` and `stopWhen: stepCountIs(20)`.
+- Pass a `prepareStep` callback that re-reads `this.state` before every step and returns `{ system: buildDevSystemPrompt(...), activeTools: PHASE_TOOLS[state.status] }` (see `phase-config.ts`).
 - Return a UI message stream response.
 - Catch top-level turn failures, log structured summaries and return a useful chat error without disclosing secrets.
 
@@ -252,13 +254,142 @@ export function buildDevSystemPrompt(context: DevPromptContext): string;
 
 Responsibilities:
 
-- Encode the Dev role, allowed flow, out-of-scope behavior and current lifecycle context.
-- State that branch format is exactly `agent/ticket-<ticketId>`.
-- Tell the model to inspect before editing and make the smallest change.
-- Tell the model to stop after PR creation and wait for human review/deployment.
-- Explain that verification checks only expected tool-name presence.
-- Tell the model to resume an active ticket rather than start a second one.
-- Never interpolate GitHub token or complete repository file contents into the static prompt.
+- Return `COMMON_PROMPT` plus the one phase prompt selected by `context.state.status`.
+- Keep every prompt as a readable multi-line template string (one constant per phase) so it can be edited by hand without touching logic.
+- Interpolate only small state values (ticket id, name, description, branch, PR number/URL). Never interpolate the GitHub token or repository file contents.
+- Add `CODING_GUIDELINES` only in `branch_ready` and `pr_open`.
+
+Starting-point prompt text (adjust wording freely; keep the intent of each phase):
+
+```ts
+const COMMON_PROMPT = `
+You are the Dev Agent for the Agentic Delivery Loop. You add new tools to the
+Wingman agent by changing TypeScript files through the GitHub API.
+
+Rules that always apply:
+- Use only the tools you are given right now. Never pretend to have other tools.
+- Never merge a pull request and never deploy anything. Humans do that.
+- Keep replies short and say what you just did and what happens next.
+- If a tool returns an error, tell the user plainly and do not retry more than once.
+`;
+
+const IDLE_PROMPT = `
+Current phase: NO ACTIVE TICKET.
+Your only job right now is to pick up work.
+When the user asks you to start, continue, or "do the next ticket",
+call start_oldest_accepted_ticket immediately. Do not ask questions first.
+If it reports that no accepted ticket exists, tell the user and stop.
+For general questions, answer briefly, then remind the user you can start the
+next ticket whenever they are ready.
+`;
+
+const ticketStartedPrompt = (t) => `
+Current phase: TICKET STARTED.
+Active ticket ${t.id}: "${t.name}"
+Description: ${t.description}
+
+Your only next step is to call create_branch. Do not write any code yet.
+After it succeeds, say the branch name and move straight on to the work.
+`;
+
+const branchReadyPrompt = (t, branch, allowedRoot) => `
+Current phase: IMPLEMENTING.
+Active ticket ${t.id}: "${t.name}"
+Description: ${t.description}
+Working branch: ${branch}. You may only read and write .ts files under ${allowedRoot}.
+
+Do the work in this order:
+1. list_files on the tools folder to see the existing tools.
+2. read_file one existing tool file and the tool registry file, to copy their style.
+3. write_file the new tool file, then write_file the updated registry. Make the
+   smallest change that satisfies the ticket. Never delete or rewrite unrelated code.
+4. When both files are written, call create_pull_request exactly once, with a
+   title that includes the ticket id and a body that summarizes the change.
+
+${CODING_GUIDELINES}
+`;
+
+const prOpenPrompt = (t, pr) => `
+Current phase: PULL REQUEST OPEN.
+Ticket ${t.id}: "${t.name}". Pull request #${pr.number}: ${pr.url} (branch ${pr.branch}).
+
+The pull request already exists. Do not create another one.
+Tell the user it is waiting for human review, merge and manual deployment of Wingman.
+- If the user asks for changes (for example from review comments), make them with
+  read_file and write_file. New commits go to the same branch and update the PR.
+- If the user says it is merged, or asks for status, call get_pull_request_status.
+  Only treat it as merged when that tool says merged is true.
+
+${CODING_GUIDELINES}
+`;
+
+const prMergedPrompt = (t, expectedToolName) => `
+Current phase: PR MERGED.
+Ticket ${t.id}: "${t.name}". The pull request is merged.
+
+If the user has not confirmed that Wingman is deployed, ask once. Then call
+verify_wingman_capability with:
+- prompt: one short sentence (max 100 characters) that a user would naturally say
+  and that should make Wingman use the new tool,
+- expectedToolName: the exact tool name the new tool was registered under.
+If verification fails, report what Wingman answered and ask whether to retry
+after redeployment.
+`;
+```
+
+`PHASE_PROMPTS` is not exported; `buildDevSystemPrompt()` uses a plain `switch` on `state.status`.
+
+### `src/agent/coding-guidelines.ts`
+
+Exports:
+
+```ts
+export const CODING_GUIDELINES: string;
+```
+
+Responsibilities:
+
+- Hold the project's rules for a new Wingman tool as one multi-line template string, so it is easy to read and edit.
+- Be the only place wider coding standards reach the agent (the agent can read only `.ts` files under the Wingman tools folder, not `AGENTS.md` or lint config).
+- Be kept in sync manually with the tool conventions in the Wingman LLD.
+
+Starting-point text:
+
+```ts
+export const CODING_GUIDELINES = `
+Coding guidelines for a new Wingman tool (follow the existing tools exactly):
+- One tool per file named <kebab-name>.tool.ts under the tools folder.
+- Export one factory named create<PascalName>Tool() and nothing else needed by callers.
+- Tool name is snake_case and is the key used in the registry.
+- Define a strict Zod input schema (.strict()), with a .describe() on every field.
+- Write a clear tool description: what it does, when to use it, and when NOT to use it.
+- Return a small plain object (for example { result }), never throw for normal input problems.
+- Tools that need no Worker binding must not take env or call the network.
+- Register the tool by importing its factory and adding one entry in the tool registry file.
+- Use TypeScript only, no new dependencies, no console.log, no comments that restate the code.
+- Match the formatting (quotes, semicolons, indentation) of the file you read.
+`;
+```
+
+### `src/agent/phase-config.ts`
+
+Exports:
+
+```ts
+export const PHASE_TOOLS: Record<DevLifecycleStatus, readonly DevToolName[]> = {
+  idle: ["start_oldest_accepted_ticket"],
+  ticket_started: ["create_branch"],
+  branch_ready: ["list_files", "read_file", "write_file", "create_pull_request"],
+  pr_open: ["list_files", "read_file", "write_file", "get_pull_request_status"],
+  pr_merged: ["verify_wingman_capability"],
+};
+```
+
+Responsibilities:
+
+- Be the single table that decides which tools the model can see in each phase.
+- Have no logic and no imports other than types.
+- Not replace per-tool precondition checks (those stay in the tools/lifecycle service).
 
 ### `src/agent/dev-state.ts`
 
@@ -267,9 +398,10 @@ Exports:
 ```ts
 export type DevLifecycleStatus =
   | "idle"
-  | "implementing"
-  | "awaiting_human"
-  | "verifying";
+  | "ticket_started"
+  | "branch_ready"
+  | "pr_open"
+  | "pr_merged";
 
 export interface ActiveTicketSummary;
 export interface PullRequestSummary;
@@ -282,7 +414,7 @@ export function assertCanStartTicket(state: DevAgentState): void;
 export function assertHasActiveTicket(
   state: DevAgentState
 ): asserts state is DevAgentState & { activeTicket: ActiveTicketSummary };
-export function assertCanVerify(state: DevAgentState): void;
+export function assertStatus(state: DevAgentState, ...allowed: DevLifecycleStatus[]): void;
 ```
 
 Responsibilities:
@@ -326,8 +458,8 @@ export function retainAfterFailure(state: DevAgentState, error: DevAgentErrorSta
 Responsibilities:
 
 - Coordinate simple cross-tool lifecycle updates.
-- Set `implementing` after Domain returns a started ticket.
-- In `recordPullRequest()`, save only the PR URL through `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })`, keep PR number and branch in `DevAgentState`, then set `awaiting_human`.
+- Set `ticket_started` after Domain returns a started ticket, `branch_ready` in `recordBranch()`, and `pr_merged` when `get_pull_request_status` first reports merged.
+- In `recordPullRequest()`, save only the PR URL through `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })`, keep PR number and branch in `DevAgentState`, then set `pr_open`.
 - In `completeVerifiedTicket()`, call `completeTicket({ ticketId })`, then clear active fields to `idle`.
 - These two Domain writes are internal lifecycle operations, not model tools.
 - On failure, preserve ticket/branch/PR and populate `lastError`.
@@ -362,7 +494,6 @@ export function unwrapRpcResult<T>(result: RpcResult<T>): T {
 export class DomainClient {
   constructor(service: Env['DOMAIN_API'], logger: DevLogger);
 
-  getTicket(input: { ticketId: string }): Promise<TicketDto>;
   startOldestAcceptedTicket(): Promise<TicketDto | null>;
   saveTicketPullRequestUrl(input: { ticketId: string; pullRequestUrl: string }): Promise<TicketDto>;
   completeTicket(input: { ticketId: string }): Promise<TicketDto>;
@@ -372,7 +503,6 @@ export class DomainClient {
 Domain methods used (authoritative signatures come from the generated binding type):
 
 ```text
-getTicket({ ticketId })                                 -> Promise<RpcResult<TicketDto>>
 startOldestAcceptedTicket()                             -> Promise<RpcResult<TicketDto | null>>
 saveTicketPullRequestUrl({ ticketId, pullRequestUrl })  -> Promise<RpcResult<TicketDto>>
 completeTicket({ ticketId })                            -> Promise<RpcResult<TicketDto>>
@@ -575,26 +705,34 @@ Exports:
 
 ```ts
 export function createDomainTools(context: DevToolContext): {
-  get_ticket: Tool;
   start_oldest_accepted_ticket: Tool;
 };
 ```
 
-Schemas:
+Schema:
 
 ```ts
-get_ticket: {
-  ticketId: string;
-}
-start_oldest_accepted_ticket: {
-}
+start_oldest_accepted_ticket: {}
+```
+
+Description string:
+
+```ts
+const START_OLDEST_ACCEPTED_TICKET_DESCRIPTION = `
+Claim the oldest accepted development ticket and mark it in progress.
+Use this when the user asks to start, continue, or take the next ticket.
+Call it with no arguments. Do not use it when a ticket is already active.
+Returns the ticket id, name and description, or a message saying no accepted
+ticket exists. After success the next step is create_branch.
+`;
 ```
 
 Responsibilities:
 
 - Delegate to `DomainClient` and lifecycle service.
-- Expose no ticket-status or pull-request save tools; saving the PR URL and completing the ticket are internal `lifecycle.service.ts` operations.
 - Reject start when state is not `idle`.
+- There is no ticket-by-ID tool; the Domain API chooses the ticket.
+- Expose no ticket-status or pull-request save tools; saving the PR URL and completing the ticket are internal `lifecycle.service.ts` operations.
 - Return compact model-readable JSON.
 - Never expose the Service Binding stub.
 
@@ -628,9 +766,44 @@ create_pull_request: {
   title: string;
   body: string;
 }
-get_pull_request_status: {
-  pullRequestNumber: number;
-}
+get_pull_request_status: {}
+```
+
+Description strings (each says when to call, when not to, and what follows):
+
+```ts
+const GITHUB_TOOL_DESCRIPTIONS = {
+  create_branch: `
+Create the working branch for the active ticket from the base branch (or reuse it
+if it already exists). Takes no arguments; the branch name is fixed by the
+system. Call it once, right after the ticket starts, before any file work.`,
+
+  list_files: `
+List files and folders under the allowed Wingman tools folder. Use it first to see
+which tools already exist. Optional "path" must stay inside that folder. It does not
+show file contents; use read_file for that.`,
+
+  read_file: `
+Read one .ts file from the allowed tools folder on the working branch. Use it to
+copy the style of an existing tool and to read the tool registry before editing.
+Always read a file before overwriting it. Returns the file text.`,
+
+  write_file: `
+Create or overwrite one .ts file under the allowed tools folder and commit it to the
+working branch. "content" must be the COMPLETE new file, not a diff or snippet.
+Write only files needed for the ticket (the new tool file and the registry).
+Optional "commitMessage" should be a short imperative sentence.`,
+
+  create_pull_request: `
+Open the pull request for the working branch. Call it once, only after all files for
+the ticket are written. "title" must include the ticket id; "body" summarizes what was
+added and how to deploy. Do not call it again if a pull request already exists.`,
+
+  get_pull_request_status: `
+Check whether the open pull request has been merged. Call it when the user says the PR
+is merged or asks for status. Takes no arguments. Merged is true only when GitHub
+reports a merge; if false, ask the user to wait for review and merge.`,
+};
 ```
 
 Responsibilities:
@@ -641,8 +814,9 @@ Responsibilities:
 - `list_files` defaults to the configured allowed root.
 - `read_file` returns path, SHA and text.
 - `write_file` reads current branch content first to determine create/update SHA.
-- `create_pull_request` reuses an existing exact-head PR or creates one, then calls lifecycle `recordPullRequest()`, which saves the PR URL through Domain and sets `awaiting_human`.
-- `get_pull_request_status` returns number, URL, state and `merged` derived from `merged_at !== null`.
+- Tool descriptions come from `GITHUB_TOOL_DESCRIPTIONS`; keep them as multi-line strings.
+- `create_pull_request` reuses an existing exact-head PR or creates one, then calls lifecycle `recordPullRequest()`, which saves the PR URL through Domain and sets `pr_open`.
+- `get_pull_request_status` uses the PR number from state, returns number, URL, state and `merged` derived from `merged_at !== null`, and on the first merged result sets state to `pr_merged`.
 
 ### `src/tools/verification.tool.ts`
 
@@ -667,13 +841,22 @@ Schema:
 
 Responsibilities:
 
-- Require lifecycle `awaiting_human`.
-- Confirm PR is merged.
-- Temporarily transition state to `verifying`.
+- Require lifecycle `pr_merged`.
 - Call `VerificationService.verifyDeployedWingman()`.
 - Persist `expectedToolName` and `lastVerification` in Dev state for UI visibility.
 - If verified, complete ticket through lifecycle service.
-- If not verified/error, retain ticket as `in_progress` and return to `awaiting_human`.
+- If not verified/error, retain ticket as `in_progress` and stay in `pr_merged` so the user can retry after redeployment.
+- Description string:
+
+```ts
+const VERIFY_WINGMAN_CAPABILITY_DESCRIPTION = `
+Check that the newly merged and deployed Wingman tool really works. Call it only after
+the pull request is confirmed merged and the user says Wingman is deployed.
+"prompt" is one short natural sentence (max 100 characters) a user would say to make
+Wingman use the new tool. "expectedToolName" is the exact registered tool name.
+Success means Wingman actually called that tool. It does not judge the answer text.
+`;
+```
 - Return normal Wingman response plus the simple tool-call log.
 
 ### `src/tools/tool-registry.ts`
@@ -814,7 +997,7 @@ These files are not implemented inside the Dev Worker, but code generation must 
 
 ### Domain API Worker
 
-Must expose the typed Service Binding RPC methods `getTicket({ ticketId })`, `startOldestAcceptedTicket()` (transactional), `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })` and `completeTicket({ ticketId })`, each returning `Promise<RpcResult<...>>`.
+Must expose the typed Service Binding RPC methods `startOldestAcceptedTicket()` (transactional), `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })` and `completeTicket({ ticketId })`, each returning `Promise<RpcResult<...>>`.
 
 ### Wingman Agent Worker
 

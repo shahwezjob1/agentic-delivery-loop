@@ -1,5 +1,10 @@
 import type { WingmanVerificationResult } from '@agentic-delivery-loop/contracts';
-export type DevLifecycleStatus = 'idle' | 'implementing' | 'awaiting_human' | 'verifying';
+export type DevLifecycleStatus =
+  | 'idle' // no active ticket
+  | 'ticket_started' // ticket in progress, no branch yet
+  | 'branch_ready' // branch exists, implementing
+  | 'pr_open' // PR raised, awaiting human review/merge
+  | 'pr_merged'; // merge confirmed, verification allowed
 export interface ActiveTicketSummary {
   id: string;
   name: string;
@@ -44,7 +49,10 @@ export function assertHasActiveTicket(
 ): asserts s is DevAgentState & { activeTicket: ActiveTicketSummary } {
   if (!s.activeTicket) throw new Error('INVALID_LIFECYCLE_STATE');
 }
+export function assertStatus(s: DevAgentState, ...allowed: DevLifecycleStatus[]) {
+  if (!allowed.includes(s.status)) throw new Error('INVALID_LIFECYCLE_STATE');
+}
 export function assertCanVerify(s: DevAgentState) {
-  if (s.status !== 'awaiting_human' || !s.activeTicket || !s.pullRequest)
+  if (s.status !== 'pr_merged' || !s.activeTicket || !s.pullRequest)
     throw new Error('INVALID_LIFECYCLE_STATE');
 }

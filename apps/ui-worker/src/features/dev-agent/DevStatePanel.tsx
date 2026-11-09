@@ -1,12 +1,19 @@
 import type { DevAgentState } from '../../contracts/dev-agent-state';
 import { VerificationResult } from './VerificationResult';
+const STATUS_LABELS: Record<string, string> = {
+  idle: 'No active ticket',
+  ticket_started: 'Ticket started',
+  branch_ready: 'Implementing',
+  pr_open: 'PR open, awaiting review',
+  pr_merged: 'PR merged, ready to verify',
+};
 export function DevStatePanel({ state }: { state: DevAgentState }) {
   return (
     <aside>
       <h3>Agent state</h3>
       <dl>
         <dt>Status</dt>
-        <dd>{state.status}</dd>
+        <dd>{STATUS_LABELS[state.status] ?? state.status}</dd>
         {(state.branchName || state.branch) && (
           <>
             <dt>Branch</dt>

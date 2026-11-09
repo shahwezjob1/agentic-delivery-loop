@@ -4,7 +4,7 @@ import type { ModelMessage, Tool } from 'ai';
 
 export const WINGMAN_MODEL = '@cf/zai-org/glm-4.7-flash';
 export const WINGMAN_MAX_STEPS = 5;
-export const WINGMAN_MAX_OUTPUT_TOKENS = 400;
+export const WINGMAN_MAX_OUTPUT_TOKENS = 800;
 
 export interface ExecuteWingmanTurnInput {
   env: Env;

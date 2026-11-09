@@ -24,11 +24,11 @@ export async function startOldestTicket(
   const t = await d.domain.startOldestAcceptedTicket();
   if (!t) return null;
   const a = { id: t.id, name: t.name, description: t.description, status: 'in_progress' as const };
-  d.setState({ ...d.getState(), status: 'implementing', activeTicket: a, lastError: null });
+  d.setState({ ...d.getState(), status: 'ticket_started', activeTicket: a, lastError: null });
   return a;
 }
 export function recordBranch(s: DevAgentState, branch: string): DevAgentState {
-  return { ...s, branch, lastError: null };
+  return { ...s, status: 'branch_ready', branch, lastError: null };
 }
 export async function recordPullRequest(d: LifecycleDependencies, p: PullRequestSummary) {
   const s = d.getState();
@@ -36,7 +36,7 @@ export async function recordPullRequest(d: LifecycleDependencies, p: PullRequest
   await d.domain.saveTicketPullRequestUrl({ ticketId: s.activeTicket.id, pullRequestUrl: p.url });
   const n = {
     ...s,
-    status: 'awaiting_human' as const,
+    status: 'pr_open' as const,
     pullRequest: p,
     branch: p.branch,
     lastError: null,
@@ -65,5 +65,8 @@ export async function completeVerifiedTicket(
   return n;
 }
 export function retainAfterFailure(s: DevAgentState, e: DevAgentErrorState): DevAgentState {
-  return { ...s, status: s.pullRequest ? 'awaiting_human' : 'implementing', lastError: e };
+  return { ...s, lastError: e };
+}
+export function markPullRequestMerged(s: DevAgentState): DevAgentState {
+  return { ...s, status: 'pr_merged', lastError: null };
 }
