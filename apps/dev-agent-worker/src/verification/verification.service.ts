@@ -8,58 +8,94 @@ import type { UIMessage } from 'ai';
 import type { Env } from '../env';
 import type { DevLogger } from '../observability/logger';
 import type { VerifyWingmanCapabilityInput } from './verification-types';
-function objects(v: JsonValue, out: Record<string, JsonValue>[] = []): Record<string, JsonValue>[] {
-  if (Array.isArray(v)) for (const x of v) objects(x, out);
-  else if (v && typeof v === 'object') {
-    out.push(v as Record<string, JsonValue>);
-    for (const x of Object.values(v)) objects(x, out);
+function collectToolNames(value: JsonValue, names: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectToolNames(item, names);
+    }
+    return;
   }
-  return out;
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+  if (typeof value.toolName === 'string') {
+    names.add(value.toolName);
+  }
+  for (const child of Object.values(value)) {
+    collectToolNames(child, names);
+  }
 }
-function inspect(r: WingmanTurnResult) {
-  const all = objects(r);
-  const names = [
-    ...new Set(all.map((x) => x.toolName).filter((x): x is string => typeof x === 'string')),
-  ];
-  const candidate = all.find(
-    (x) => typeof x.id === 'string' && x.role === 'assistant' && Array.isArray(x.parts),
-  );
-  if (!candidate) throw new Error('Wingman result did not contain a final assistant UIMessage.');
-  return { message: candidate as unknown as UIMessage, names };
+function inspect(result: WingmanTurnResult): {
+  message: UIMessage;
+  toolNames: string[];
+} {
+  const names = new Set<string>();
+  collectToolNames(result, names);
+  const text = typeof result.text === 'string' ? result.text : '';
+  const message: UIMessage = {
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    parts: [
+      {
+        type: 'text',
+        text,
+      },
+    ],
+  };
+  return {
+    message,
+    toolNames: [...names],
+  };
 }
 export class VerificationService {
   constructor(
     private ns: Env['WINGMAN_AGENT'],
     private log: DevLogger,
   ) {}
-  async verifyDeployedWingman(i: VerifyWingmanCapabilityInput): Promise<WingmanVerificationResult> {
+  async verifyDeployedWingman(
+    input: VerifyWingmanCapabilityInput,
+  ): Promise<WingmanVerificationResult> {
     const started = Date.now();
-    const id = crypto.randomUUID();
-    this.log.info('wingman_verification_started', { conversationId: id });
+    const conversationId = crypto.randomUUID();
+    this.log.info('wingman_verification_started', {
+      conversationId,
+      expectedToolName: input.expectedToolName,
+    });
     try {
-      const wingman = await getAgentByName(this.ns, id);
-      const r = (await wingman.invokeTurn({ prompt: i.prompt })) as WingmanTurnResult;
-      const x = inspect(r);
-      const result = {
-        verified: x.names.includes(i.expectedToolName),
-        expectedToolName: i.expectedToolName,
-        wingmanResponse: x.message,
-        toolsCalled: x.names.map((toolName) => ({ toolName })),
+      const wingman = await getAgentByName(this.ns, conversationId);
+      const wingmanResult = (await wingman.invokeTurn({
+        prompt: input.prompt,
+      })) as WingmanTurnResult;
+      const inspected = inspect(wingmanResult);
+      const verified = inspected.toolNames.some((toolName) => toolName === input.expectedToolName);
+      const result: WingmanVerificationResult = {
+        verified,
+        expectedToolName: input.expectedToolName,
+        wingmanResponse: inspected.message,
+        toolsCalled: inspected.toolNames.map((toolName) => ({
+          toolName,
+          input: null,
+        })),
       };
       this.log.info('wingman_verification_completed', {
-        conversationId: id,
-        verificationStatus: result.verified ? 'verified' : 'not_verified',
+        conversationId,
+        expectedToolName: input.expectedToolName,
+        toolsCalled: inspected.toolNames,
+        verificationStatus: verified ? 'verified' : 'not_verified',
         durationMs: Date.now() - started,
       });
       return result;
-    } catch (e) {
+    } catch (error) {
       this.log.error('wingman_verification_failed', {
-        conversationId: id,
+        conversationId,
         verificationStatus: 'error',
         durationMs: Date.now() - started,
         errorCode: 'WINGMAN_VERIFICATION_FAILED',
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
       });
-      throw e;
+      throw error;
     }
   }
 }
