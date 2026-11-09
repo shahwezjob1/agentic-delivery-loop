@@ -1,4 +1,5 @@
 import type { Tool } from 'ai';
+import { InputSchema, OutputSchema } from './add.tool';
 
 export function createSqrtTool(): Tool {
   return {
@@ -10,6 +11,18 @@ export function createSqrtTool(): Tool {
         type: 'number',
       },
     ],
-    execute: (args) => Math.sqrt(args.number),
+    inputSchema: {
+      type: 'object',
+      properties: {
+        number: {
+          type: 'number',
+        },
+      },
+      required: ['number'],
+    },
+    outputSchema: {
+      type: 'number',
+    },
+    execute: (args: InputSchema) => Math.sqrt(args.number),
   };
 }
