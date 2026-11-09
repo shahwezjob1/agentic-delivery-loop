@@ -10,7 +10,7 @@ export function WingmanConversation({ conversationId }: { conversationId: string
         <ChatMessage key={m.id} message={m} />
       ))}
       {c.error && <p role="alert">Unable to complete that turn. Try again.</p>}
-      <ChatComposer disabled={busy} maxLength={100} onSubmit={c.sendMessage} />
+      <ChatComposer disabled={busy} maxLength={300} onSubmit={c.sendMessage} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ export function ChatComposer({
   onSubmit,
 }: {
   disabled: boolean;
-  maxLength: 100;
+  maxLength: 300;
   onSubmit: (m: string) => void | Promise<void>;
 }) {
   const [v, setV] = useState(''),
