@@ -4,8 +4,8 @@ export interface TabDefinition {
   label: string;
 }
 export const TAB_DEFINITIONS = [
-  { id: 'requests', label: 'Requests' },
   { id: 'wingman', label: 'Wingman' },
+  { id: 'requests', label: 'Requests' },
   { id: 'tickets', label: 'Tickets' },
   { id: 'po-logs', label: 'PO Logs' },
   { id: 'dev-agent', label: 'Dev Agent' },

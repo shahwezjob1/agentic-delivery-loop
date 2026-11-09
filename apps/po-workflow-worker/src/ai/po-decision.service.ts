@@ -33,10 +33,25 @@ export async function decideCreateOrLink(input: {
     },
   });
   const decoded = decodeResponse(result);
-  const decision: PoDecision = noCandidates
-    ? createDecisionZodSchema.parse(decoded)
-    : poDecisionZodSchema.parse(decoded);
-  if (decision.action === 'link')
-    assertSelectedCandidate({ ticketId: decision.ticketId, candidates: input.candidates });
+  const parsed = noCandidates
+    ? createDecisionZodSchema.safeParse(decoded)
+    : poDecisionZodSchema.safeParse(decoded);
+  if (!parsed.success) {
+    console.error('po.decision.validation-failed', {
+      requestId: input.request.id,
+      noCandidates,
+      candidateIds: input.candidates.map((candidate) => candidate.ticketId),
+      decoded,
+      zodIssues: parsed.error.issues,
+    });
+    throw parsed.error;
+  }
+  const decision: PoDecision = parsed.data;
+  if (decision.action === 'link') {
+    assertSelectedCandidate({
+      ticketId: decision.ticketId,
+      candidates: input.candidates,
+    });
+  }
   return decision;
 }

@@ -69,12 +69,6 @@ pnpm exec wrangler types apps/dev-agent-worker/worker-configuration.d.ts --confi
 pnpm exec wrangler types apps/ui-worker/worker-configuration.d.ts --config apps/ui-worker/wrangler.jsonc --config apps/domain-api-worker/wrangler.jsonc --config apps/wingman-agent-worker/wrangler.jsonc --config apps/dev-agent-worker/wrangler.jsonc
 ```
 
-## Build
-
-```
-pnpm build
-```
-
 ## Deploy in dependency order
 
 ```
