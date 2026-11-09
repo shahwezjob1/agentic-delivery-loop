@@ -43,3 +43,4 @@ Thumbs.db
 # Temporary output
 .wrangler-domain-preview/
 *.tmp
+apps/ui-worker/tsconfig.tsbuildinfo

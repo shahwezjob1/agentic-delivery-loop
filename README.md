@@ -82,6 +82,7 @@ pnpm deploy:domain-api
 pnpm deploy:wingman
 pnpm deploy:po-workflow
 pnpm deploy:dev-agent
+pnpm deploy:ui
 ```
 
 ## Add secret after Dev Agent exists

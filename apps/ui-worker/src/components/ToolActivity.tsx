@@ -6,15 +6,34 @@ export function ToolActivity({ part }: { part: Record<string, unknown> }) {
       : typeof part.type === 'string'
         ? part.type.replace(/^tool-/, '')
         : 'Tool';
-  const state = typeof part.state === 'string' ? part.state : 'activity';
-  const text = (v: unknown) => (typeof v === 'string' ? v.slice(0, 240) : undefined);
+  const format = (value: unknown): string => {
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (value === undefined) {
+      return '';
+    }
+    return JSON.stringify(value, null, 2);
+  };
+  const input = format(part.input);
+  const output = format(part.output);
+  const error = format(part.errorText);
   return (
     <div className={s.tool}>
-      <strong>{name}</strong>
-      <span>{state}</span>
-      {text(part.input) && <p>Input: {text(part.input)}</p>}
-      {text(part.output) && <p>Output: {text(part.output)}</p>}
-      {text(part.errorText) && <p role="alert">{text(part.errorText)}</p>}
+      <strong>Tool: {name}</strong>
+      {input && (
+        <div>
+          <span>Arguments:</span>
+          <pre>{input}</pre>
+        </div>
+      )}
+      {output && (
+        <div>
+          <span>Result:</span>
+          <pre>{output}</pre>
+        </div>
+      )}
+      {error && <p role="alert">Error: {error}</p>}
     </div>
   );
 }
