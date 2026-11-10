@@ -13,6 +13,10 @@ export interface ExecuteWingmanTurnInput {
   tools: Record<string, Tool>;
 }
 
+export function describeError(error: unknown): string {
+  return (error instanceof Error ? `${error.name}: ${error.message}` : String(error)).slice(0, 300);
+}
+
 export function executeWingmanTurn(input: ExecuteWingmanTurnInput) {
   const ai = createAI({ binding: input.env.AI });
   return streamText({
@@ -22,5 +26,6 @@ export function executeWingmanTurn(input: ExecuteWingmanTurnInput) {
     tools: input.tools,
     stopWhen: stepCountIs(WINGMAN_MAX_STEPS),
     maxOutputTokens: WINGMAN_MAX_OUTPUT_TOKENS,
+    onError: ({ error }) => console.error('wingman.stream_failed', describeError(error)),
   });
 }

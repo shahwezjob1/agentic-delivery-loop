@@ -5,7 +5,7 @@ import { InvalidWingmanPromptError } from '../errors/wingman-errors';
 import { invokeProgrammaticTurn } from '../invocation/programmatic-turn.service';
 import { createWingmanTools, getWingmanToolNames } from '../tools/tool-registry';
 import { buildPrunedModelMessages, validatePrompt } from './conversation-policy';
-import { executeWingmanTurn } from './turn-executor';
+import { describeError, executeWingmanTurn } from './turn-executor';
 import { buildWingmanSystemPrompt } from './wingman-prompt';
 
 function latestUserText(messages: UIMessage[]): string {
@@ -28,11 +28,15 @@ export class WingmanAgent extends AIChatAgent<Env> {
         systemPrompt: buildWingmanSystemPrompt(getWingmanToolNames(tools)),
         tools,
       });
-      return result.toUIMessageStreamResponse();
+      // Without onError the browser only sees a generic failure and nothing is logged.
+      return result.toUIMessageStreamResponse({
+        onError: (error) => `Wingman error: ${describeError(error)}`,
+      });
     } catch (error) {
       if (error instanceof InvalidWingmanPromptError) {
         return new Response(error.message, { status: 400 });
       }
+      console.error('wingman.chat_failed', describeError(error));
       throw error;
     }
   }
