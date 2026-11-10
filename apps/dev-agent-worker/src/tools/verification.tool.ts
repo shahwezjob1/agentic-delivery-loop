@@ -10,8 +10,10 @@ export const verifyWingmanCapabilityInputSchema = z
 export function createVerificationTool(c: DevToolContext) {
   return tool({
     description: `
-Check that the newly merged and deployed Wingman tool really works. Call it only after the
-pull request is confirmed merged and the user says Wingman is deployed.
+Check that the deployed Wingman really has the new tool and uses it. Call it only after the
+user says Wingman is deployed with the changes. While the pull request is still open a pass
+is only recorded and the ticket stays open: after the merge, verify again to complete the
+ticket. Do not call it while new changes are waiting for a pull request.
 "prompt" is one short natural sentence (at most 100 characters) a user would say to make
 Wingman use the new tool. "expectedToolName" is the exact registered tool name.
 Success means Wingman actually called that tool. It does not judge the answer text.
@@ -24,7 +26,10 @@ Success means Wingman actually called that tool. It does not judge the answer te
       try {
         const result = await c.verification.verifyDeployedWingman(input);
         c.setState({ ...c.getState(), lastVerification: result });
-        if (result.verified)
+        // The ticket is completed only after the PR is merged. A pass while the PR is open
+        // is recorded, and verification must be repeated after the merge.
+        const complete = result.verified && s.status === 'pr_merged';
+        if (complete)
           await completeVerifiedTicket(
             {
               domain: c.domain,
@@ -35,7 +40,13 @@ Success means Wingman actually called that tool. It does not judge the answer te
             },
             result,
           );
-        return result;
+        return {
+          ...result,
+          ticketCompleted: complete,
+          ...(result.verified && !complete
+            ? { note: 'Verified, but the pull request is not merged yet. Ask the user to merge it, then verify again to complete the ticket.' }
+            : {}),
+        };
       } catch (e) {
         c.setState({
           ...c.getState(),

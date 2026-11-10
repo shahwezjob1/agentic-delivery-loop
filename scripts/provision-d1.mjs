@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
 const wrangler = process.platform === 'win32' ? 'wrangler.cmd' : 'wrangler';
 const name = 'adl-sql-db';
-const list = spawnSync(wrangler, ['d1', 'list', '--json'], { encoding: 'utf8' });
+const shell = process.platform === 'win32'; // .cmd files need a shell on Windows
+const list = spawnSync(wrangler, ['d1', 'list', '--json'], { encoding: 'utf8', shell });
 if (list.status !== 0) {
   console.error(list.stderr || list.stdout);
   process.exit(list.status ?? 1);
@@ -12,6 +13,6 @@ if (existing) {
   console.log(`${name} already exists. database_id=${existing.uuid ?? existing.id}`);
   process.exit(0);
 }
-const created = spawnSync(wrangler, ['d1', 'create', name], { stdio: 'inherit' });
+const created = spawnSync(wrangler, ['d1', 'create', name], { stdio: 'inherit', shell });
 if (created.status !== 0) process.exit(created.status ?? 1);
 console.log('Copy the emitted database_id into apps/domain-api-worker/wrangler.jsonc.');

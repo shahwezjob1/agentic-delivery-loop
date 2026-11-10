@@ -67,6 +67,10 @@ export async function completeVerifiedTicket(
 export function retainAfterFailure(s: DevAgentState, e: DevAgentErrorState): DevAgentState {
   return { ...s, lastError: e };
 }
+// After a merge, new commits are not deployed or reviewed yet: back to branch_ready for a new PR.
+export function markBranchChanged(s: DevAgentState): DevAgentState {
+  return s.status === 'pr_merged' ? { ...s, status: 'branch_ready', lastError: null } : s;
+}
 export function markPullRequestMerged(s: DevAgentState): DevAgentState {
   return { ...s, status: 'pr_merged', lastError: null };
 }

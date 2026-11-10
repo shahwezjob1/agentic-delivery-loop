@@ -1,7 +1,11 @@
 import { spawnSync } from 'node:child_process';
 const wrangler = process.platform === 'win32' ? 'wrangler.cmd' : 'wrangler';
 const name = 'adl-vector-db';
-const get = spawnSync(wrangler, ['vectorize', 'get', name, '--json'], { encoding: 'utf8' });
+const shell = process.platform === 'win32'; // .cmd files need a shell on Windows
+const get = spawnSync(wrangler, ['vectorize', 'get', name, '--json'], {
+  encoding: 'utf8',
+  shell,
+});
 if (get.status === 0) {
   const index = JSON.parse(get.stdout || '{}');
   const dimensions = index.config?.dimensions ?? index.dimensions;
@@ -16,6 +20,9 @@ if (get.status === 0) {
 const created = spawnSync(
   wrangler,
   ['vectorize', 'create', name, '--dimensions', '768', '--metric', 'cosine'],
-  { stdio: 'inherit' },
+  { stdio: 'inherit', shell },
 );
-if (created.status !== 0) process.exit(created.status ?? 1);
+if (created.status !== 0) {
+  console.error(`Failed to create ${name}: ${created.error?.message ?? `exit code ${created.status}`}`);
+  process.exit(created.status ?? 1);
+}

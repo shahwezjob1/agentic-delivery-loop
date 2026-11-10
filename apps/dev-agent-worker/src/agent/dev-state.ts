@@ -53,6 +53,6 @@ export function assertStatus(s: DevAgentState, ...allowed: DevLifecycleStatus[])
   if (!allowed.includes(s.status)) throw new Error('INVALID_LIFECYCLE_STATE');
 }
 export function assertCanVerify(s: DevAgentState) {
-  if (s.status !== 'pr_merged' || !s.activeTicket || !s.pullRequest)
+  if ((s.status !== 'pr_open' && s.status !== 'pr_merged') || !s.activeTicket || !s.pullRequest)
     throw new Error('INVALID_LIFECYCLE_STATE');
 }

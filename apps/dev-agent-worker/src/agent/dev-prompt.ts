@@ -47,15 +47,17 @@ Current phase: IMPLEMENTING.
 Active ticket ${t?.id}: "${t?.name}"
 Description: ${t?.description}
 Working branch: ${s.branch}. You may only read and write .ts files under ${allowedRoot}.
-
+${s.pullRequest ? `Your previous pull request #${s.pullRequest.number} was already merged. The changes below are NEW and not yet in any pull request.\n` : ''}
 Do the work in this order:
 1. list_files on ${allowedRoot} to see the existing tools.
 2. read_file one existing tool file and the tool registry file, to copy their style.
+   If you are fixing earlier work, read_file the files you changed before.
 3. write_file the new tool file, then write_file the updated registry file. Make the
-   smallest change that satisfies the ticket. Never delete or rewrite unrelated code.
-   Write the COMPLETE contents of each file, not a snippet.
-4. When both files are written, call create_pull_request exactly once. The title must
-   include the ticket id and the body must summarize what was added.
+   smallest change that satisfies the ticket or the requested fix. Never delete or rewrite
+   unrelated code. Write the COMPLETE contents of each file, not a snippet.
+4. When the files are written, call create_pull_request exactly once for this set of
+   changes. The title must include the ticket id and the body must summarize what was
+   added or fixed.
 
 ${CODING_GUIDELINES}`;
 }
@@ -67,13 +69,18 @@ function prOpenPrompt(s: DevAgentState, allowedRoot: string): string {
 Current phase: PULL REQUEST OPEN.
 Ticket ${t?.id}: "${t?.name}". Pull request #${pr?.number}: ${pr?.url} (branch ${pr?.branch}).
 
-The pull request already exists. Do not create another one.
+The pull request already exists. Do not create another one while it is open.
 Tell the user it is waiting for human review, merge and manual deployment of Wingman.
 - If the user asks for changes (for example from review comments), make them with
   read_file and write_file under ${allowedRoot}. New commits go to the same branch
-  and update the pull request.
+  and update the open pull request.
 - If the user says it is merged, or asks for status, call get_pull_request_status.
   Only treat it as merged when that tool says merged is true.
+- If the user says Wingman is already deployed with these changes (for example a test
+  deployment before merge) and asks you to verify, call verify_wingman_capability with a
+  short prompt (at most 100 characters) and the exact registered tool name. A pass does
+  NOT complete the ticket while the pull request is open: tell the user to merge it, then
+  verify again after the merge.
 
 ${CODING_GUIDELINES}`;
 }
@@ -82,16 +89,24 @@ function prMergedPrompt(s: DevAgentState): string {
   const t = s.activeTicket;
   return `
 Current phase: PULL REQUEST MERGED.
-Ticket ${t?.id}: "${t?.name}". The pull request is merged.
+Ticket ${t?.id}: "${t?.name}". Pull request #${s.pullRequest?.number} is merged.
+Working branch: ${s.branch}. You may only read and write .ts files under ${allowedRoot}.
 
-If the user has not confirmed that Wingman is deployed, ask once. Then call
-verify_wingman_capability with:
-- prompt: one short sentence (at most 100 characters) that a user would naturally say
-  and that should make Wingman use the new tool,
-- expectedToolName: the exact name the new tool was registered under.
-If verification fails, report what Wingman answered and ask whether to retry after
-redeployment.
-`;
+Choose based on what the user wants:
+- To check the work: if the user has not confirmed that Wingman is deployed, ask once.
+  Then call verify_wingman_capability with:
+  - prompt: one short sentence (at most 100 characters) that a user would naturally say
+    and that should make Wingman use the new tool,
+  - expectedToolName: the exact name the new tool was registered under.
+  A pass completes the ticket. If verification fails, report what Wingman answered and
+  ask whether to retry after redeployment or to fix the code.
+- To fix or change the code (wrong code was merged, verification failed, or the user asks
+  for an update): read_file the current files, then write_file the changes on the same
+  branch. After your first write the work needs a NEW pull request: call
+  create_pull_request when the changes are complete, then wait for review and merge.
+- Do not call create_pull_request unless you have written new changes since the merge.
+
+${CODING_GUIDELINES}`;
 }
 
 function phasePrompt(c: DevPromptContext): string {

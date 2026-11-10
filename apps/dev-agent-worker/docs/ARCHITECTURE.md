@@ -171,11 +171,13 @@ The system prompt and the visible tool set are recomputed from `DevAgentState.st
 | ---------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
 | `idle`           | No active ticket                              | `start_oldest_accepted_ticket`                                             |
 | `ticket_started` | Ticket is `in_progress`, no branch yet        | `create_branch`                                                            |
-| `branch_ready`   | Branch exists, no PR yet                      | `list_files`, `read_file`, `write_file`, `create_pull_request`             |
-| `pr_open`        | PR raised; human review/merge pending         | `list_files`, `read_file`, `write_file`, `get_pull_request_status`         |
-| `pr_merged`      | PR merge confirmed by `get_pull_request_status` | `verify_wingman_capability`                                              |
+| `branch_ready`   | Branch exists with changes not yet in an open PR (first implementation, or edits after a merge) | `list_files`, `read_file`, `write_file`, `create_pull_request`             |
+| `pr_open`        | A PR created by Dev is open; review/merge pending | `list_files`, `read_file`, `write_file`, `get_pull_request_status`, `verify_wingman_capability` |
+| `pr_merged`      | Dev's latest PR confirmed merged by `get_pull_request_status` | `list_files`, `read_file`, `write_file`, `create_pull_request`, `get_pull_request_status`, `verify_wingman_capability` |
 
-`write_file` stays available in `pr_open` so the user can ask for changes from review comments; each write adds a commit to the same branch and the open PR updates itself. `create_pull_request` is hidden once a PR exists.
+`write_file` stays available in `pr_open` so the user can ask for changes from review comments; each write adds a commit to the same branch and the open PR updates itself, and state stays `pr_open`. `create_pull_request` is hidden while Dev's own PR is open.
+
+After a merge the file tools and `create_pull_request` stay visible so wrong code can be fixed on the same branch (merge-commit strategy). A `write_file` in `pr_merged` moves state to `branch_ready`: the new commits are neither reviewed nor deployed, so verification is hidden until a new PR is raised and merged. `create_pull_request` always creates a new PR; it does not look up existing PRs, and PRs opened by other people are not tracked or touched.
 
 Mechanism (a direct equivalent of rebinding tools per node in LangGraph, except there is no graph):
 
@@ -223,9 +225,9 @@ Every phase prompt shares a short common block (role, only use the listed tools,
 
 - `idle`: Nudge the agent to call `start_oldest_accepted_ticket` immediately when the user asks to begin or continue; if it reports no accepted ticket, say so and stop. Casual conversation is allowed, but do not describe work that has not started.
 - `ticket_started`: Show the ticket name and description, then call `create_branch`. Do not write code yet.
-- `branch_ready`: Include the ticket name and description and the coding guidelines. Inspect first (`list_files`, then `read_file` on one existing tool and on the tool registry), then write the new tool file and the registry change with `write_file`, then call `create_pull_request` once. Make the smallest change that satisfies the ticket.
-- `pr_open`: The PR is raised and must not be re-created. Tell the user it awaits human review, merge and Wingman deployment. If the user asks for changes, edit with `write_file`. When the user says the PR is merged, or asks for status, call `get_pull_request_status`. Do not claim it is merged until the tool says so.
-- `pr_merged`: The merge is confirmed. Ask the user to confirm Wingman has been deployed if they have not said so, then call `verify_wingman_capability` with a short natural-language prompt that should make Wingman use the new tool and the exact tool name it expects.
+- `branch_ready`: Include the ticket name and description and the coding guidelines. Inspect first (`list_files`, then `read_file` on one existing tool and on the tool registry), then write the new tool file and the registry change with `write_file`, then call `create_pull_request` once for this set of changes. Make the smallest change that satisfies the ticket or the requested fix. If a previous PR was merged, say that the new changes are not in any PR yet.
+- `pr_open`: The PR is raised and must not be re-created. If the user says Wingman is already deployed with these changes and asks to verify, call `verify_wingman_capability`; a pass is recorded but does not complete the ticket; the user merges, then verification is repeated in `pr_merged`. Tell the user it awaits human review, merge and Wingman deployment. If the user asks for changes, edit with `write_file`. When the user says the PR is merged, or asks for status, call `get_pull_request_status`. Do not claim it is merged until the tool says so.
+- `pr_merged`: The merge is confirmed. To check the work, ask the user to confirm Wingman has been deployed if they have not said so, then call `verify_wingman_capability` with a short natural-language prompt that should make Wingman use the new tool and the exact tool name it expects. To fix or change the code (wrong code merged, failed verification, or a user request), read the files, `write_file` on the same branch, and after the changes are complete call `create_pull_request` for a new PR. Do not call `create_pull_request` without new changes.
 
 Prompt guidance controls the normal sequence. Security boundaries remain enforced in code.
 
@@ -286,18 +288,22 @@ ticket_started
   -> branch_ready     create_branch succeeded
 
 branch_ready
+  -> branch_ready     write_file (more commits before the PR)
   -> pr_open          create_pull_request succeeded and its URL was saved
 
 pr_open
-  -> pr_open          more commits, or get_pull_request_status reports not merged
+  -> pr_open          write_file (commits update the open PR), or get_pull_request_status reports not merged
   -> pr_merged        get_pull_request_status reports merged_at !== null
+  -> pr_open          verification passed while the PR is open; recorded only, ticket not completed (verify again after merge)
 
 pr_merged
+  -> branch_ready     write_file (new changes need a new PR; verification hidden)
+  -> pr_open          create_pull_request succeeded (new PR; replaces the PR in state)
   -> idle             verification returned verified: true and the ticket was completed
-  -> pr_merged        verification failed; user fixes/redeploys Wingman and retries
+  -> pr_merged        verification failed; user redeploys and retries, or fixes the code
 ```
 
-Recoverable tool failures keep the current status and populate `lastError`. A failed verification does not reopen editing in this POC; fixing a wrong implementation after merge is outside the happy path.
+Recoverable tool failures keep the current status and populate `lastError`. Fixing wrong merged code continues on the same branch and raises a new PR.
 
 Starting another ticket is rejected unless state is `idle`.
 
@@ -447,11 +453,11 @@ There is no tool to select a ticket by ID and no `get_ticket` tool. Saving the P
 ### GitHub tools
 
 - `create_branch({})` (phase `ticket_started`)
-- `list_files({ path? })` (phases `branch_ready`, `pr_open`)
-- `read_file({ path })` (phases `branch_ready`, `pr_open`)
-- `write_file({ path, content, commitMessage? })` (phases `branch_ready`, `pr_open`)
-- `create_pull_request({ title, body })` (phase `branch_ready`)
-- `get_pull_request_status({})` (phase `pr_open`; the PR number is read from state)
+- `list_files({ path? })` (phases `branch_ready`, `pr_open`, `pr_merged`)
+- `read_file({ path })` (phases `branch_ready`, `pr_open`, `pr_merged`)
+- `write_file({ path, content, commitMessage? })` (phases `branch_ready`, `pr_open`, `pr_merged`)
+- `create_pull_request({ title, body })` (phases `branch_ready`, `pr_merged`; always creates a new PR)
+- `get_pull_request_status({})` (phases `pr_open`, `pr_merged`; the PR number is read from state)
 
 The active ticket, branch and PR number come from lifecycle state. The model cannot provide owner, repository, token, arbitrary branch, base branch or PR number.
 
@@ -468,7 +474,7 @@ interface VerifyWingmanCapabilityInput {
 }
 ```
 
-Both strings are trimmed and required. `prompt` must satisfy the same 1 to 100 character rule as browser Wingman chat (so it must be one short sentence). Visible only in phase `pr_merged`. `expectedToolName` is retained only by Dev and is never sent to Wingman.
+Both strings are trimmed and required. `prompt` must satisfy the same 1 to 100 character rule as browser Wingman chat (so it must be one short sentence). Visible in phases `pr_open` and `pr_merged`. `expectedToolName` is retained only by Dev and is never sent to Wingman.
 
 ## 12. Wingman verification integration
 
@@ -502,7 +508,7 @@ invokeTurn(input: InvokeWingmanTurnInput): Promise<WingmanTurnResult>;
 
 For every attempt, Dev:
 
-1. Requires lifecycle status `pr_merged`.
+1. Requires lifecycle status `pr_open` or `pr_merged` with a PR in state.
 2. Generates a new random conversation ID with `crypto.randomUUID()`.
 3. Obtains the `WingmanAgent` stub with `getAgentByName(env.WINGMAN_AGENT, conversationId)`.
 4. Calls `invokeTurn({ prompt })` and awaits the complete `WingmanTurnResult`.
@@ -554,7 +560,7 @@ Tools called:
 - add
 ```
 
-When `verified` is true, `lifecycle.service.ts` calls `completeTicket({ ticketId })`, clears active lifecycle fields and returns to `idle`. When false or when RPC fails, the ticket remains `in_progress`, state stays `pr_merged` so verification can be retried after the user fixes or redeploys Wingman, and the user receives the result/error.
+When `verified` is true and state was `pr_merged`, `lifecycle.service.ts` calls `completeTicket({ ticketId })`, clears active lifecycle fields and returns to `idle`. When false or when RPC fails, the ticket remains `in_progress`, state stays unchanged (`pr_merged` or `pr_open`) so verification can be retried after the user fixes or redeploys Wingman, and the user receives the result/error. When `verified` is true but state was `pr_open`, the result is stored in `lastVerification`, the ticket is not completed, state stays `pr_open`, and the tool result tells the model to ask the user to merge and verify again.
 
 ### Wingman implementation dependency
 
@@ -564,7 +570,7 @@ Wingman's `invokeTurn()` runs its normal turn executor (the same prompt, model, 
 
 Yes, the agent can be given the project's coding standards. Two mechanisms work together:
 
-1. **Written guidelines in the prompt.** A hand-maintained multi-line string in `src/agent/coding-guidelines.ts` states the conventions a new Wingman tool must follow (file name, factory name, strict Zod schema, description style, return shape, registry registration). It is injected into the `branch_ready` and `pr_open` prompts only.
+1. **Written guidelines in the prompt.** A hand-maintained multi-line string in `src/agent/coding-guidelines.ts` states the conventions a new Wingman tool must follow (file name, factory name, strict Zod schema, description style, return shape, registry registration). It is injected into the `branch_ready`, `pr_open` and `pr_merged` prompts only.
 2. **Worked examples from the repository.** The `branch_ready` prompt requires the agent to `read_file` one existing tool (for example `add.tool.ts`) and `tool-registry.ts` before writing. Real code in the same repo is a stronger style signal than prose and stays correct when the code evolves.
 
 Because the allowed GitHub area is `apps/wingman-agent-worker/src/tools/` only, repository-wide files such as `AGENTS.md` or lint config are not readable by the agent. The guidelines string is therefore the only place where wider standards can be passed in. It must be updated whenever the Wingman tool conventions in the Wingman LLD change. Linting and typechecking of the generated code still happen in the human review and deployment step; the agent cannot run them.
@@ -678,7 +684,8 @@ No automated test packages are added. Implementation completion requires:
   4. Confirm branch format.
   5. Confirm only `list_files`, `read_file`, `write_file` and `create_pull_request` are offered, the prompt shows the ticket description, and reads/writes reject paths outside the allowed root.
   6. Confirm the generated tool follows the coding guidelines and is registered in the tool registry.
-  7. Confirm the PR is created, its URL saved, and `create_pull_request` is no longer offered.
+  7. Confirm the PR is created, its URL saved, and `create_pull_request` is no longer offered while it is open.
+  8a. After merge, confirm the file tools and `create_pull_request` are still offered; a `write_file` moves state to `branch_ready` and a new PR returns it to `pr_open`.
   8. Ask for a small change; confirm a new commit lands on the same branch.
   9. Confirm `verify_wingman_capability` is not offered before merge, and that `get_pull_request_status` says not merged.
   10. Merge and manually deploy Wingman, then confirm `get_pull_request_status` reports merged and verification becomes available.

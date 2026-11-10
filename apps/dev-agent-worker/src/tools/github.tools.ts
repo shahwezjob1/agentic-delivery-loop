@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { buildBranchName } from '../github/branch-name';
 import { assertHasActiveTicket, assertStatus } from '../agent/dev-state';
 import {
+  markBranchChanged,
   markPullRequestMerged,
   recordBranch,
   recordPullRequest,
@@ -22,22 +23,27 @@ file contents; use read_file for that.
 `,
   read_file: `
 Read one .ts file from the allowed tools folder on the working branch. Use it to copy the
-style of an existing tool and to read the tool registry before editing. Always read a
-file before overwriting it. Returns the file text.
+style of an existing tool, to read the tool registry before editing, and to review code
+before fixing it. Always read a file before overwriting it. Returns the file text.
 `,
   write_file: `
 Create or overwrite one .ts file under the allowed tools folder and commit it to the
 working branch. "content" must be the COMPLETE new file, not a diff or a snippet. Write
 only the files the ticket needs (the new tool file and the tool registry). The optional
-"commitMessage" should be a short imperative sentence.
+"commitMessage" should be a short imperative sentence. If a pull request is open, the
+commit updates it. If the previous pull request was already merged, the commit starts a
+new set of changes that needs a new pull request.
 `,
   create_pull_request: `
-Open the pull request for the working branch. Call it once, only after all files for the
-ticket are written. "title" must include the ticket id; "body" summarizes what was added.
-Do not call it again once a pull request exists.
+Open a new pull request from the working branch into the base branch. Call it once per set
+of changes, only after the files are written. Use it for the first pull request, and again
+after a merged pull request when you have since committed more changes. Do not call it
+while your own pull request is still open (commit to the branch instead), and do not call
+it when there are no new commits. "title" must include the ticket id; "body" summarizes
+what was added or fixed.
 `,
   get_pull_request_status: `
-Check whether the open pull request has been merged. Call it when the user says the pull
+Check whether your latest pull request has been merged. Call it when the user says the pull
 request is merged or asks for its status. Takes no arguments. Merged is true only when
 GitHub reports a merge; if false, ask the user to wait for review and merge.
 `,
@@ -79,7 +85,7 @@ export function createGitHubTools(c: DevToolContext) {
       inputSchema: z.object({ path: z.string().optional() }).strict(),
       execute: async ({ path }) => {
         const s = active();
-        assertStatus(s, 'branch_ready', 'pr_open');
+        assertStatus(s, 'branch_ready', 'pr_open', 'pr_merged');
         return {
           ok: true,
           files: await c.github.listFiles(
@@ -94,7 +100,7 @@ export function createGitHubTools(c: DevToolContext) {
       inputSchema: z.object({ path: z.string() }).strict(),
       execute: async ({ path }) => {
         const s = active();
-        assertStatus(s, 'branch_ready', 'pr_open');
+        assertStatus(s, 'branch_ready', 'pr_open', 'pr_merged');
         const f = await c.github.readText(path, s.branch ?? c.config.github.baseBranch);
         return f ? { ok: true, ...f } : { ok: false, code: 'GITHUB_NOT_FOUND' };
       },
@@ -106,7 +112,7 @@ export function createGitHubTools(c: DevToolContext) {
         .strict(),
       execute: async ({ path, content, commitMessage }) => {
         const s = active();
-        assertStatus(s, 'branch_ready', 'pr_open');
+        assertStatus(s, 'branch_ready', 'pr_open', 'pr_merged');
         if (!s.branch) throw new Error('Create the branch before writing files.');
         const current = await c.github.readText(path, s.branch);
         const result = await c.github.putContent({
@@ -116,6 +122,7 @@ export function createGitHubTools(c: DevToolContext) {
           message: commitMessage ?? `ticket ${s.activeTicket.id}: update ${path.split('/').at(-1)}`,
           ...(current ? { sha: current.sha } : {}),
         });
+        c.setState(markBranchChanged(c.getState()));
         return { ok: true, path, commitSha: result.commit.sha };
       },
     }),
@@ -124,10 +131,9 @@ export function createGitHubTools(c: DevToolContext) {
       inputSchema: z.object({ title: z.string().min(1), body: z.string().min(1) }).strict(),
       execute: async ({ title, body }) => {
         const s = active();
-        assertStatus(s, 'branch_ready');
+        assertStatus(s, 'branch_ready', 'pr_merged');
         if (!s.branch) throw new Error('Create the branch first.');
-        let pr = (await c.github.listPullRequestsByHead(s.branch))[0];
-        pr ??= await c.github.createPullRequest({
+        const pr = await c.github.createPullRequest({
           title,
           body,
           head: s.branch,
@@ -147,11 +153,11 @@ export function createGitHubTools(c: DevToolContext) {
       inputSchema: z.object({}).strict(),
       execute: async () => {
         const s = active();
-        assertStatus(s, 'pr_open');
+        assertStatus(s, 'pr_open', 'pr_merged');
         if (!s.pullRequest) throw new Error('INVALID_LIFECYCLE_STATE');
         const pr = await c.github.getPullRequest(s.pullRequest.number);
         const merged = pr.merged_at !== null;
-        if (merged) c.setState(markPullRequestMerged(c.getState()));
+        if (merged && s.status === 'pr_open') c.setState(markPullRequestMerged(c.getState()));
         return { ok: true, number: pr.number, url: pr.html_url, state: pr.state, merged };
       },
     }),

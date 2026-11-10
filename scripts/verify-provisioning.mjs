@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 const wrangler = process.platform === 'win32' ? 'wrangler.cmd' : 'wrangler';
 let failed = false;
 function exec(args) {
-  const r = spawnSync(wrangler, args, { encoding: 'utf8' });
+  const r = spawnSync(wrangler, args, { encoding: 'utf8', shell: process.platform === 'win32' });
   if (r.status !== 0) {
     console.error(`FAIL wrangler ${args.join(' ')}\n${r.stderr || r.stdout}`);
     failed = true;

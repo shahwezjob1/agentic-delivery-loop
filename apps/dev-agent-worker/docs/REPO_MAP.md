@@ -257,7 +257,7 @@ Responsibilities:
 - Return `COMMON_PROMPT` plus the one phase prompt selected by `context.state.status`.
 - Keep every prompt as a readable multi-line template string (one constant per phase) so it can be edited by hand without touching logic.
 - Interpolate only small state values (ticket id, name, description, branch, PR number/URL). Never interpolate the GitHub token or repository file contents.
-- Add `CODING_GUIDELINES` only in `branch_ready` and `pr_open`.
+- Add `CODING_GUIDELINES` only in `branch_ready`, `pr_open` and `pr_merged`.
 
 Starting-point prompt text (adjust wording freely; keep the intent of each phase):
 
@@ -303,7 +303,7 @@ Do the work in this order:
 2. read_file one existing tool file and the tool registry file, to copy their style.
 3. write_file the new tool file, then write_file the updated registry. Make the
    smallest change that satisfies the ticket. Never delete or rewrite unrelated code.
-4. When both files are written, call create_pull_request exactly once, with a
+4. When the files are written, call create_pull_request exactly once per set of changes, with a
    title that includes the ticket id and a body that summarizes the change.
 
 ${CODING_GUIDELINES}
@@ -380,8 +380,21 @@ export const PHASE_TOOLS: Record<DevLifecycleStatus, readonly DevToolName[]> = {
   idle: ["start_oldest_accepted_ticket"],
   ticket_started: ["create_branch"],
   branch_ready: ["list_files", "read_file", "write_file", "create_pull_request"],
-  pr_open: ["list_files", "read_file", "write_file", "get_pull_request_status"],
-  pr_merged: ["verify_wingman_capability"],
+  pr_open: [
+    "list_files",
+    "read_file",
+    "write_file",
+    "get_pull_request_status",
+    "verify_wingman_capability",
+  ],
+  pr_merged: [
+    "list_files",
+    "read_file",
+    "write_file",
+    "create_pull_request",
+    "get_pull_request_status",
+    "verify_wingman_capability",
+  ],
 };
 ```
 
@@ -458,7 +471,7 @@ export function retainAfterFailure(state: DevAgentState, error: DevAgentErrorSta
 Responsibilities:
 
 - Coordinate simple cross-tool lifecycle updates.
-- Set `ticket_started` after Domain returns a started ticket, `branch_ready` in `recordBranch()`, and `pr_merged` when `get_pull_request_status` first reports merged.
+- Set `ticket_started` after Domain returns a started ticket, `branch_ready` in `recordBranch()`, `pr_merged` when `get_pull_request_status` first reports merged, and back to `branch_ready` via `markBranchChanged()` when files are written after a merge.
 - In `recordPullRequest()`, save only the PR URL through `saveTicketPullRequestUrl({ ticketId, pullRequestUrl })`, keep PR number and branch in `DevAgentState`, then set `pr_open`.
 - In `completeVerifiedTicket()`, call `completeTicket({ ticketId })`, then clear active fields to `idle`.
 - These two Domain writes are internal lifecycle operations, not model tools.
@@ -795,12 +808,15 @@ Write only files needed for the ticket (the new tool file and the registry).
 Optional "commitMessage" should be a short imperative sentence.`,
 
   create_pull_request: `
-Open the pull request for the working branch. Call it once, only after all files for
-the ticket are written. "title" must include the ticket id; "body" summarizes what was
-added and how to deploy. Do not call it again if a pull request already exists.`,
+Open a new pull request from the working branch into the base branch. Call it once per set
+of changes, only after the files are written. Use it for the first pull request, and again
+after a merged pull request when you have since committed more changes. Do not call it
+while your own pull request is still open (commit to the branch instead), and do not call
+it when there are no new commits. "title" must include the ticket id; "body" summarizes
+what was added or fixed.`,
 
   get_pull_request_status: `
-Check whether the open pull request has been merged. Call it when the user says the PR
+Check whether your latest pull request has been merged. Call it when the user says the PR
 is merged or asks for status. Takes no arguments. Merged is true only when GitHub
 reports a merge; if false, ask the user to wait for review and merge.`,
 };
@@ -815,8 +831,10 @@ Responsibilities:
 - `read_file` returns path, SHA and text.
 - `write_file` reads current branch content first to determine create/update SHA.
 - Tool descriptions come from `GITHUB_TOOL_DESCRIPTIONS`; keep them as multi-line strings.
-- `create_pull_request` reuses an existing exact-head PR or creates one, then calls lifecycle `recordPullRequest()`, which saves the PR URL through Domain and sets `pr_open`.
-- `get_pull_request_status` uses the PR number from state, returns number, URL, state and `merged` derived from `merged_at !== null`, and on the first merged result sets state to `pr_merged`.
+- `create_pull_request` always creates a new PR (no lookup of existing PRs; PRs opened by others are ignored), then calls lifecycle `recordPullRequest()`, which saves the PR URL through Domain, replaces the PR in state and sets `pr_open`. Allowed in `branch_ready` and `pr_merged`.
+- `write_file` is allowed in `branch_ready`, `pr_open` and `pr_merged`; after a successful write, lifecycle `markBranchChanged()` moves `pr_merged` to `branch_ready` and leaves other statuses unchanged.
+- `list_files` and `read_file` are allowed in `branch_ready`, `pr_open` and `pr_merged`.
+- `get_pull_request_status` uses the PR number from state, returns number, URL, state and `merged` derived from `merged_at !== null`, and on the first merged result (from `pr_open`) sets state to `pr_merged`. Allowed in `pr_open` and `pr_merged`.
 
 ### `src/tools/verification.tool.ts`
 
@@ -841,7 +859,8 @@ Schema:
 
 Responsibilities:
 
-- Require lifecycle `pr_merged`.
+- Require lifecycle `pr_open` or `pr_merged` with a PR in state.
+- Complete the ticket only when verified and the status was `pr_merged`. A pass in `pr_open` is stored in `lastVerification`, state stays `pr_open`, and the tool result carries `ticketCompleted: false` and a note to merge and verify again.
 - Call `VerificationService.verifyDeployedWingman()`.
 - Persist `expectedToolName` and `lastVerification` in Dev state for UI visibility.
 - If verified, complete ticket through lifecycle service.
@@ -850,8 +869,10 @@ Responsibilities:
 
 ```ts
 const VERIFY_WINGMAN_CAPABILITY_DESCRIPTION = `
-Check that the newly merged and deployed Wingman tool really works. Call it only after
-the pull request is confirmed merged and the user says Wingman is deployed.
+Check that the deployed Wingman really has the new tool and uses it. Call it only after
+the user says Wingman is deployed with the changes. While the pull request is still open a
+pass is only recorded and the ticket stays open: after the merge, verify again to complete
+the ticket. Do not call it while new changes are waiting for a pull request.
 "prompt" is one short natural sentence (max 100 characters) a user would say to make
 Wingman use the new tool. "expectedToolName" is the exact registered tool name.
 Success means Wingman actually called that tool. It does not judge the answer text.
