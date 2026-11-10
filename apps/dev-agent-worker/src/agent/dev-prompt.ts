@@ -85,7 +85,7 @@ Tell the user it is waiting for human review, merge and manual deployment of Win
 ${CODING_GUIDELINES}`;
 }
 
-function prMergedPrompt(s: DevAgentState): string {
+function prMergedPrompt(s: DevAgentState, allowedRoot: string): string {
   const t = s.activeTicket;
   return `
 Current phase: PULL REQUEST MERGED.
@@ -120,7 +120,7 @@ function phasePrompt(c: DevPromptContext): string {
     case 'pr_open':
       return prOpenPrompt(c.state, c.allowedRoot);
     case 'pr_merged':
-      return prMergedPrompt(c.state);
+      return prMergedPrompt(c.state, c.allowedRoot);
   }
 }
 
