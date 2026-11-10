@@ -437,7 +437,9 @@ After structured generation, perform these application boundary checks:
 - Trim generated ticket fields before final validation.
 - For `create`, require ticket name length `1..50` and description length `1..1000`.
 - For `link`, require `ticketId` to equal one of the supplied candidate IDs.
-- Reject additional properties.
+- Apply a lenient pre-parse (`normalizeDecision`) before strict validation: match `action` case-insensitively, drop fields that do not belong to the chosen action, trim strings, truncate over-long text to its limit instead of rejecting it, and default a missing `refinementNote`. Missing required fields, wrong types and unknown actions are still rejected.
+- Match a link's `ticketId` against the candidates case-insensitively and use the candidate's real ID.
+- The Zod schemas are the single source of truth; the JSON Schema sent to Workers AI is generated from them (`z.toJSONSchema`).
 - Do not repair malformed output and do not make a second inference call.
 - **Fallback.** If the inference call, response decoding, validation, or the candidate check fails for any reason (for example the model links to a ticket ID that is not a candidate), do not fail the request. Log `po.decision.fallback_create` with the request ID, candidate IDs and the error root cause to Worker logs, then create a new ticket using the request's own name and description with `refinementNote: "Kept as requested."`. This is not a repair or retry; no second inference call is made.
 

@@ -518,7 +518,7 @@ Responsibilities:
 - decode the SDK response field;
 - validate with Zod;
 - trim generated create fields;
-- call `assertSelectedCandidate()` for link;
+- call `resolveSelectedCandidate()` for link and use the returned real ID;
 - log one `po.decision` info event with request ID, action, candidate count and (for create) ticket name and `refinementNote`;
 - make no retry or repair call;
 - on any failure (call, decode, validation, candidate check) log `po.decision.fallback_create` with the root cause and return a create decision that copies the request name and description with `refinementNote: "Kept as requested."`.
@@ -557,17 +557,17 @@ export const MINIMUM_CANDIDATE_SIMILARITY = 0.7;
 
 export function filterCandidateMatches(matches: CandidateMatch[]): CandidateMatch[];
 
-export function assertSelectedCandidate(input: {
+export function resolveSelectedCandidate(input: {
   ticketId: string;
   candidates: HydratedTicketCandidate[];
-}): void;
+}): string;
 ```
 
 Requirements:
 
 - filter with `similarityScore >= 0.70`;
 - preserve ranking;
-- assert that a link ticket ID exactly matches one supplied candidate;
+- resolve a link ticket ID against the supplied candidates case-insensitively, return the candidate's real ID, and throw when none matches;
 - do not calculate a second similarity value;
 - do not introduce an environment-configured threshold.
 
@@ -601,14 +601,14 @@ export type PoDecision = CreateDecision | LinkDecision;
 
 Schema rules:
 
+- the Zod schemas are the single source of truth; both JSON Schemas are generated from them with `z.toJSONSchema` (the `$schema` key is removed). The create-or-link JSON Schema is a flat object with `action` required and the other fields optional; per-action required fields are enforced by Zod after generation;
 - discriminated by `action`;
-- create requires only `action`, `ticketName`, `ticketDescription`, `refinementNote`;
-- refinement note trimmed length 1 to 200 (shown in the PO log and Worker logs);
-- link requires only `action`, `ticketId`;
-- no additional properties;
-- ticket name trimmed length 1 to 50;
-- ticket description trimmed length 1 to 1,000;
-- ticket ID non-empty.
+- create requires `action`, `ticketName` (1 to 50), `ticketDescription` (1 to 1,000), `refinementNote` (1 to 200);
+- link requires `action`, `ticketId` (non-empty);
+- no additional properties after normalization;
+- `normalizeDecision()` runs before Zod: case-insensitive trimmed `action`, fields outside the chosen action are dropped, strings trimmed and truncated to their limits, missing refinement note defaulted to "No note provided.".
+
+`candidate-policy.ts` exposes `resolveSelectedCandidate()`, which matches the link ID case-insensitively and returns the real candidate ID or throws.
 
 The JSON Schema must use only structures supported by the selected model's `response_format` implementation. If the provider rejects a top-level `oneOf`, express an equivalent provider-compatible discriminated object without weakening application Zod validation.
 

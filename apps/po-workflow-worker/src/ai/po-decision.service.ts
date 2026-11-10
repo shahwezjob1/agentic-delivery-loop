@@ -1,11 +1,12 @@
 import type { FeatureRequestDto } from '@agentic-delivery-loop/contracts';
 import { PO_DECISION_MODEL, PO_MODEL_MAX_TOKENS } from './models';
 import { buildPoDecisionMessages } from './po-prompt';
-import { assertSelectedCandidate } from '../policies/candidate-policy';
+import { resolveSelectedCandidate } from '../policies/candidate-policy';
 import { logSchedulerError } from '../logging/system-log';
 import {
   createDecisionJsonSchema,
   createDecisionZodSchema,
+  normalizeDecision,
   poDecisionJsonSchema,
   poDecisionZodSchema,
   type PoDecision,
@@ -33,7 +34,7 @@ async function decideWithModel(input: {
       json_schema: noCandidates ? createDecisionJsonSchema : poDecisionJsonSchema,
     },
   });
-  const decoded = decodeResponse(result);
+  const decoded = normalizeDecision(decodeResponse(result));
   const parsed = noCandidates
     ? createDecisionZodSchema.safeParse(decoded)
     : poDecisionZodSchema.safeParse(decoded);
@@ -47,7 +48,7 @@ async function decideWithModel(input: {
     });
     throw parsed.error;
   }
-  const decision: PoDecision = parsed.data;
+  let decision: PoDecision = parsed.data;
   console.info('po.decision', {
     requestId: input.request.id,
     action: decision.action,
@@ -57,10 +58,13 @@ async function decideWithModel(input: {
       : { ticketId: decision.ticketId }),
   });
   if (decision.action === 'link') {
-    assertSelectedCandidate({
-      ticketId: decision.ticketId,
-      candidates: input.candidates,
-    });
+    decision = {
+      action: 'link',
+      ticketId: resolveSelectedCandidate({
+        ticketId: decision.ticketId,
+        candidates: input.candidates,
+      }),
+    };
   }
   return decision;
 }
