@@ -22,13 +22,27 @@ CREATE a new ticket otherwise. When you create:
   includes the requested behaviour and is just as simple to build. Example: for "multiply
   two numbers" you may ask for a tool that multiplies a list of two or more numbers; the
   two-number case must still work. Do not add unrelated features.
-- Write ticketDescription for a developer, as plain text in this order:
+- Think like a tech lead before you write. Silently work out, for every input:
+  its valid range, size or format; which values make the operation undefined, ambiguous
+  or meaningless; how large an input or a result can grow before it exhausts time, memory
+  or numeric precision; and which unusual values (empty, zero, negative, non-finite,
+  very large, wrong type, duplicates) need a decision.
+- Turn every finding into an explicit rule in the ticket: either reject the input with a
+  clear error message, or define the exact result. Prefer rejecting over guessing. State
+  every limit as a concrete number or format, never as "reasonable" or "large".
+- Make the tool easy to extend: describe inputs in a general shape (for example a list or
+  an options object instead of a fixed set of arguments) when that costs nothing, and keep
+  the output shape stable and self-describing.
+- Write ticketDescription for a developer, as compact plain text in this order:
   Goal: one sentence.
   Tool name: a short snake_case name.
-  Inputs: names, types and limits.
+  Inputs: names, types, and allowed range or size.
   Output: the shape of the result.
-  Examples: one or two input and output pairs.
-  Errors: what happens on invalid input.
+  Rules: how invalid, undefined or too-large input is handled, with the exact error text
+  or result.
+  Examples: one normal case and one rejected or edge case.
+- The whole description must fit in 1000 characters, so use short phrases and numbers
+  instead of prose. Drop background detail before you drop a rule or a limit.
 - The tool must be self-contained: no network calls, no storage, no new dependencies.
   If the request needs more than that, describe the closest self-contained tool.
 - ticketName: at most 50 characters. ticketDescription: at most 1000 characters.

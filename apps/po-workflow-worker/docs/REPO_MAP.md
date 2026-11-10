@@ -482,7 +482,8 @@ Prompt requirements:
 - cast the model as product owner and tech lead for Wingman who refines one request into one self-contained tool ticket (see ARCHITECTURE.md "Refinement policy");
 - link only when the candidate fully delivers the request, otherwise create;
 - allow one controlled generalization that still satisfies the original request;
-- require the description order Goal, Tool name, Inputs, Output, Examples, Errors;
+- require a generic input analysis (valid domain, undefined values, growth in time/memory/precision, unusual values) whose results become explicit rules with concrete limits, rejecting rather than guessing, and extensible input shapes where free;
+- require the description order Goal, Tool name, Inputs, Output, Rules, Examples, within 1,000 characters;
 - require a one-sentence `refinementNote` for created tickets;
 - include request name and description;
 - include all surviving candidate fields and similarity scores;

@@ -363,7 +363,7 @@ Coding guidelines for a new Wingman tool (follow the existing tools exactly):
 - Tool name is snake_case and is the key used in the registry.
 - Define a strict Zod input schema (.strict()), with a .describe() on every field.
 - Write a clear tool description: what it does, when to use it, and when NOT to use it.
-- Return a small plain object (for example { result }), never throw for normal input problems.
+- Return a small plain object (for example { result }); enforce the ticket's input rules and limits in the Zod schema or by returning { error }, never throw, crash or loop on bad input.
 - Tools that need no Worker binding must not take env or call the network.
 - Register the tool by importing its factory and adding one entry in the tool registry file.
 - Use TypeScript only, no new dependencies, no console.log, no comments that restate the code.

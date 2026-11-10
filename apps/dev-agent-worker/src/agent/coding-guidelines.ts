@@ -7,6 +7,9 @@ Coding guidelines for a new Wingman tool (copy the existing tools exactly):
 - Define inputSchema with z.object({ ... }).strict() (zod). Use z.number().finite() for numbers.
 - Write a description that says what the tool does, when to use it, and when NOT to use it.
 - execute is async and returns a small plain object such as { result }.
+- Enforce every input rule and limit from the ticket: in the Zod schema where possible
+  (min, max, int, array length), otherwise return { error: '<short reason>' } for inputs
+  that have a valid type but are unsupported. Never throw, crash or loop on bad input.
 - Tools that need no Worker binding take no arguments and make no network calls.
 - Register the tool in the tool registry file: import its factory and add one entry to the
   returned object. The key is the snake_case tool name (for example mult), and the tool
