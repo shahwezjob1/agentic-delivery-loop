@@ -24,7 +24,7 @@ export function createCalcSquareRootTool() {
       } else if (num === 0) {
         return { result: 0 };
       } else {
-        return { result: Math.sqrt(num) };
+        return { result: Number(Math.sqrt(num).toFixed(2)) };
       }
     },
   });
