@@ -17,9 +17,9 @@ export function createSqrtNumberTool() {
     `,    
     inputSchema: z
       .object({
-        number: z.number().finite().nonNegative().describe('Number to calculate square root'),
+        number: z.number().finite().nonnegative().describe('Number to calculate square root'),
       })
       .strict(),
-    execute: async ({ number }): Promise<SqrtNumberToolOutput> => ({ result: Math.sqrt(number) }),
+    execute: async ({ number }): Promise<SqrtNumberToolOutput> => ({ result: Number(Math.sqrt(number).toFixed(2)) }),
   });
 }
