@@ -13,6 +13,6 @@ echo "3/4 Deleting Vectorize index adl-vector-db..."
 pnpm exec wrangler vectorize delete adl-vector-db --force || echo "Index not found or already deleted; continuing."
 
 echo "4/4 Recreating Vectorize index (768 dimensions, cosine)..."
-pnpm provision:vectorize
+pnpm exec wrangler vectorize create adl-vector-db --dimensions 768 --metric cosine
 
 echo "Done. Wait a few seconds before the next PO run."

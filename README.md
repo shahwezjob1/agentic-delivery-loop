@@ -6,6 +6,14 @@ This application has 3 main parts :-
 2. PO Workflow picks up the newly created feature requests ; deduplicates them via a RAG search ; links requests to correct dev tickets and creates new dev tickets if needed.
 3. Dev Agent picks up the tickets makes code changes raises a PR waits for human to merge and deploy then validates the code changes.
 
+## Why the PO Workflow ? Why not just Wingman checking existing requests to prevent deplicates ?
+
+- For Production ready application adding a search tool strongly improves the system (in rare concurrent situation duplicates can still be created). But does not replace the PO Workflow.
+- PO Workflow is not just deduplication. It's about refining the user requirement before it gets picked up by Dev Agent.
+    - Refinement can be both technial and non technical. It can be deterministic or llm based or human in the loop.
+    - Business value of the ticket needs to be checked. And accordingly prioritised or rejected.
+    - Technical plan needs to be preparaed based on existing code for better latency, scalibility, reusability etc. 
+
 # Setup and Deployment Commands
 
 ## Node and PNPM
@@ -76,6 +84,7 @@ pnpm deploy:domain-api
 pnpm deploy:wingman
 pnpm deploy:po-workflow
 pnpm deploy:dev-agent
+pnpm --filter @agentic-delivery-loop/ui-worker build  
 pnpm deploy:ui
 ```
 
@@ -91,6 +100,24 @@ pnpm exec wrangler secret put GITHUB_TOKEN --config apps/dev-agent-worker/wrangl
 pnpm --filter @agentic-delivery-loop/ui-worker build
 pnpm deploy:ui
 ```
+
+## To run sql scripts
+
+Update the script before running
+```
+ pnpm exec wrangler d1 execute adl-sql-db --remote --config apps/domain-api-worker/wrangler.jsonc --file script.sql                              
+```
+
+## To delete a vector index
+
+Add account id and cloudfare key in the script. Update ticket id used as index for vector.
+```
+ node .\scripts\delete-vector-index.mjs
+```
+
+## Delete all data
+
+Commands are present in scripts/delete-all.sh
 
 # Design Documentation
 
