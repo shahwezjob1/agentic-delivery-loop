@@ -11,13 +11,13 @@ export interface CalcSquareRootToolOutput {
 export function createCalcSquareRootTool() {
   return tool({
     description: `
-    Calculate the principal square root of a non-negative real number. Use it whenever the user asks to calculate the square root of a number. Do NOT use it for negative numbers; those are unsupported, so say so instead of approximating. Inputs must be real numbers, not text.
+    Calculate the principal square root of a non-negative real number. Use it whenever the user asks to calculate the square root of a number. Do NOT use it for negative numbers; those are unsupported, so say so instead of approximating. Inputs must be real numbers, not text. The result is rounded to 2 decimal places.
     `,    
     inputSchema: z
       .object({
         number: z.number().finite().nonNegative().describe('Number to calculate square root'),
       })
       .strict(),
-    execute: async ({ number }): Promise<CalcSquareRootToolOutput> => ({ result: Math.sqrt(number) }),
+    execute: async ({ number }): Promise<CalcSquareRootToolOutput> => ({ result: Number(Math.sqrt(number).toFixed(2)) }),
   });
 }
