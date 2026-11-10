@@ -215,7 +215,7 @@ The prompt texts live in `src/agent/dev-prompt.ts` as readable multi-line templa
 2. Convert the full persisted `this.messages` collection with `convertToModelMessages()`.
 3. Do not call `pruneMessages()` and do not implement custom history pruning.
 4. Call `streamText()` with the model, full converted history, the complete tool set, limits and the `prepareStep` callback above.
-5. Return `result.toUIMessageStreamResponse()`.
+5. Return `result.toUIMessageStreamResponse({ onError })`. Stream errors (invalid tool calls, model failures) are logged as `chat_stream_failed` and the browser receives a short `Dev Agent error: <name>: <message>` instead of a generic failure.
 
 The complete Dev conversation is sent while it fits the model context. If it exceeds the model context, return a clear error asking the user to start a new Dev conversation. Do not silently remove earlier messages.
 
@@ -508,7 +508,7 @@ invokeTurn(input: InvokeWingmanTurnInput): Promise<WingmanTurnResult>;
 
 For every attempt, Dev:
 
-1. Requires lifecycle status `pr_open` or `pr_merged` with a PR in state.
+1. Requires lifecycle status `pr_open` or `pr_merged` with a PR in state. When the status is `pr_open`, it first fetches the PR; if `merged_at !== null` it moves state to `pr_merged`, so the model does not have to call `get_pull_request_status` before verifying.
 2. Generates a new random conversation ID with `crypto.randomUUID()`.
 3. Obtains the `WingmanAgent` stub with `getAgentByName(env.WINGMAN_AGENT, conversationId)`.
 4. Calls `invokeTurn({ prompt })` and awaits the complete `WingmanTurnResult`.

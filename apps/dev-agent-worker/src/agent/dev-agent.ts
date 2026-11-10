@@ -22,6 +22,16 @@ function latest(messages: unknown[]): string {
         .trim() ?? '')
     : '';
 }
+function errorSummary(error: unknown): string {
+  const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return text.slice(0, 300);
+}
+function logStreamError(log: ReturnType<typeof createLogger>, error: unknown): void {
+  log.error('chat_stream_failed', {
+    errorCode: error instanceof Error ? error.name : 'UNKNOWN',
+    errorMessage: errorSummary(error),
+  });
+}
 export class DevAgent extends AIChatAgent<Env, DevAgentState> {
   initialState = INITIAL_DEV_AGENT_STATE;
   async onChatMessage(): Promise<Response> {
@@ -71,8 +81,15 @@ export class DevAgent extends AIChatAgent<Env, DevAgentState> {
         temperature: config.model.temperature,
         maxOutputTokens: config.model.maxOutputTokens,
         stopWhen: stepCountIs(config.model.maxSteps),
+        onError: ({ error }) => logStreamError(log, error),
       });
-      return result.toUIMessageStreamResponse();
+      return result.toUIMessageStreamResponse({
+        // Without this the browser only sees a generic error and nothing is logged.
+        onError: (error) => {
+          logStreamError(log, error);
+          return `Dev Agent error: ${errorSummary(error)}`;
+        },
+      });
     } catch (e) {
       log.error('chat_turn_failed', { errorCode: e instanceof Error ? e.name : 'UNKNOWN' });
       return new Response('The Dev Agent turn failed. Review Worker logs and retry.', {

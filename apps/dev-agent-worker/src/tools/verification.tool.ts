@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { assertCanVerify } from '../agent/dev-state';
-import { completeVerifiedTicket } from '../agent/lifecycle.service';
+import { completeVerifiedTicket, markPullRequestMerged } from '../agent/lifecycle.service';
 import type { VerifyWingmanCapabilityInput } from '../verification/verification-types';
 import type { DevToolContext } from './tool-context';
 export const verifyWingmanCapabilityInputSchema = z
@@ -11,7 +11,8 @@ export function createVerificationTool(c: DevToolContext) {
   return tool({
     description: `
 Check that the deployed Wingman really has the new tool and uses it. Call it only after the
-user says Wingman is deployed with the changes. While the pull request is still open a pass
+user says Wingman is deployed with the changes. The merge state is refreshed from GitHub
+automatically, so you do not need to call get_pull_request_status first. While the pull request is still open a pass
 is only recorded and the ticket stays open: after the merge, verify again to complete the
 ticket. Do not call it while new changes are waiting for a pull request.
 "prompt" is one short natural sentence (at most 100 characters) a user would say to make
@@ -20,8 +21,17 @@ Success means Wingman actually called that tool. It does not judge the answer te
 `,
     inputSchema: verifyWingmanCapabilityInputSchema,
     execute: async (input: VerifyWingmanCapabilityInput) => {
-      const s = c.getState();
+      let s = c.getState();
       assertCanVerify(s);
+      // The user may have merged since the last status check: refresh from GitHub first so the
+      // model does not need to call get_pull_request_status before verifying.
+      if (s.status === 'pr_open' && s.pullRequest) {
+        const pr = await c.github.getPullRequest(s.pullRequest.number);
+        if (pr.merged_at !== null) {
+          s = markPullRequestMerged(s);
+          c.setState(s);
+        }
+      }
       c.setState({ ...s, expectedToolName: input.expectedToolName, lastError: null });
       try {
         const result = await c.verification.verifyDeployedWingman(input);

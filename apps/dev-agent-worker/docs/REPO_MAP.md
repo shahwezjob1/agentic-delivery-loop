@@ -227,7 +227,7 @@ Responsibilities:
 - Build the complete tool set once per turn using `createDevTools()`.
 - Call `streamText()` with the fixed model, temperature (`0.2`), `maxOutputTokens: 4096` and `stopWhen: stepCountIs(20)`.
 - Pass a `prepareStep` callback that re-reads `this.state` before every step and returns `{ system: buildDevSystemPrompt(...), activeTools: PHASE_TOOLS[state.status] }` (see `phase-config.ts`).
-- Return a UI message stream response.
+- Return a UI message stream response with an `onError` handler that logs `chat_stream_failed` and returns a short error summary (name and message, max 300 characters) to the browser; `streamText` also gets `onError` for logging.
 - Catch top-level turn failures, log structured summaries and return a useful chat error without disclosing secrets.
 
 Must not:
@@ -860,6 +860,7 @@ Schema:
 Responsibilities:
 
 - Require lifecycle `pr_open` or `pr_merged` with a PR in state.
+- When the status is `pr_open`, first fetch the PR and move to `pr_merged` if it is merged.
 - Complete the ticket only when verified and the status was `pr_merged`. A pass in `pr_open` is stored in `lastVerification`, state stays `pr_open`, and the tool result carries `ticketCompleted: false` and a note to merge and verify again.
 - Call `VerificationService.verifyDeployedWingman()`.
 - Persist `expectedToolName` and `lastVerification` in Dev state for UI visibility.
