@@ -10,7 +10,7 @@ echo "2/4 Verifying D1 tables are empty..."
 pnpm exec wrangler d1 execute adl-sql-db --remote --config apps/domain-api-worker/wrangler.jsonc --command "SELECT (SELECT COUNT(*) FROM feature_requests) AS requests, (SELECT COUNT(*) FROM tickets) AS tickets, (SELECT COUNT(*) FROM po_logs) AS po_logs;"
 
 echo "3/4 Deleting Vectorize index adl-vector-db..."
-pnpm exec wrangler vectorize delete adl-vector-db --force || echo "Index not found or already deleted; continuing."
+pnpm exec wrangler vectorize delete adl-vector-db --force
 
 echo "4/4 Recreating Vectorize index (768 dimensions, cosine)..."
 pnpm exec wrangler vectorize create adl-vector-db --dimensions 768 --metric cosine

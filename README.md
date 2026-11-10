@@ -122,3 +122,7 @@ Commands are present in scripts/delete-all.sh
 # Design Documentation
 
 This package contains the consolidated decisions plus root and per-Worker Architecture and Repository Map documents. Read order: root `docs/ARCHITECTURE.md`, root `docs/REPO_MAP.md`, then each Worker pair.
+
+# Prompt History
+
+Relevant prompt history used for generating the code is in [`docs/PROMPT_HISTORY.md`](docs/PROMPT_HISTORY.md).

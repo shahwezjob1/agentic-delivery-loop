@@ -6,8 +6,8 @@ export interface TabDefinition {
 export const TAB_DEFINITIONS = [
   { id: 'wingman', label: 'Wingman' },
   { id: 'requests', label: 'Requests' },
-  { id: 'tickets', label: 'Tickets' },
   { id: 'po-logs', label: 'PO Logs' },
+  { id: 'tickets', label: 'Tickets' },
   { id: 'dev-agent', label: 'Dev Agent' },
 ] as const;
 export function parseTab(v: string | null): AppTab {
