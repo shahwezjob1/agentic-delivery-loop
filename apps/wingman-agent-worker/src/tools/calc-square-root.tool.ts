@@ -15,7 +15,7 @@ Calculate square root of a non-negative real number. Use it whenever the user as
 `,
     inputSchema: z
       .object({
-        number: z.number().finite().nonNegative().describe('Number to calculate square root'),
+        number: z.number().finite().nonnegative().describe('Number to calculate square root'),
       })
       .strict(),
     execute: async ({ number }): Promise<CalcSquareRootToolOutput> => ({ result: Math.sqrt(number) }),
