@@ -1,4 +1,4 @@
-[![Watch the demo](https://youtube.com)](https://youtu.be/XhGHICgEAKM)
+https://github.com/user-attachments/assets/1eab6d2e-e63f-4bc7-818c-65ae63f514f5
 
 # AGENTIC-DELIVERY-LOOP
 
