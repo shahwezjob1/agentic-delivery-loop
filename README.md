@@ -121,10 +121,24 @@ Add account id and cloudfare key in the script. Update ticket id used as index f
 
 Commands are present in scripts/delete-all.sh
 
+## Delete Cloudfare Resources
+
+```
+pnpm exec wrangler delete --name agentic-delivery-loop-ui
+pnpm exec wrangler delete --name agentic-delivery-loop-dev-agent
+pnpm exec wrangler delete --name agentic-delivery-loop-po-workflow
+pnpm exec wrangler delete --name agentic-delivery-loop-wingman-agent
+pnpm exec wrangler delete --name agentic-delivery-loop-domain-api
+pnpm exec wrangler workflows delete adl-po-workflow
+pnpm exec wrangler vectorize delete adl-vector-db --force
+pnpm exec wrangler d1 delete adl-sql-db
+```
+
 # Design Documentation
 
 This package contains the consolidated decisions plus root and per-Worker Architecture and Repository Map documents. Read order: root `docs/ARCHITECTURE.md`, root `docs/REPO_MAP.md`, then each Worker pair.
 
 # Prompt History
 
-Relevant prompt history used for generating the code is in [`docs/PROMPT_HISTORY.md`](docs/PROMPT_HISTORY.md).
+Relevant prompt history used for generating the code is in [`docs/PROMPT_HISTORY.md`](docs/PROMPT_HISTORY.md).  
+[`AGENTS.md`](/AGENTS.md) contains the main instructions for coding agents to generate code. This file is referenced as source of truth in [CLAUDE.md](/CLAUDE.md) file and attached in prompts for copliot browser.
